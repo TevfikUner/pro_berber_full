@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+import math
 import firebase_admin
 from firebase_admin import credentials, messaging
 
@@ -10,6 +11,7 @@ def gun_bilgisi_getir(tarih_str: str):
     
     return {
         "kapanis": "17:00" if is_sunday else "22:00",
+        "acilis": "10:00",
         "is_open": True # Şu an her gün açığız
     }
 
@@ -71,46 +73,98 @@ def bildirim_gonder(token: str, baslik: str, mesaj: str):
         print("Bildirim gönderilirken hata oluştu (Şu an JSON dosyası eksik olabilir):", e)
 
 # --- 3. RANDEVU VE SLOT MANTIKLARI ---
+
+def gecmis_tarih_mi(tarih_str: str) -> bool:
+    """
+    Verilen tarih bugünden önceyse True döner.
+    Bugün veya gelecek ise False döner.
+    """
+    try:
+        secilen = datetime.strptime(tarih_str, "%Y-%m-%d").date()
+        bugun = datetime.now().date()
+        return secilen < bugun
+    except ValueError:
+        return True  # Geçersiz tarih formatı → reddet
+
+
+def gecmis_saat_mi(tarih_str: str, saat_str: str) -> bool:
+    """
+    Seçilen tarih bugünse ve seçilen saat şu anki saatten önceyse True döner.
+    Gelecek bir tarih ise False döner.
+    """
+    try:
+        secilen_tarih = datetime.strptime(tarih_str, "%Y-%m-%d").date()
+        bugun = datetime.now().date()
+        
+        # Gelecek bir günse saat kontrolü gereksiz
+        if secilen_tarih > bugun:
+            return False
+        
+        # Geçmiş günse zaten gecmis_tarih_mi tarafından yakalanır
+        if secilen_tarih < bugun:
+            return True
+        
+        # Bugünse → saat kontrolü yap
+        simdi = datetime.now()
+        secilen_vakit = datetime.combine(secilen_tarih, datetime.strptime(saat_str, "%H:%M").time())
+        return secilen_vakit <= simdi
+    except ValueError:
+        return True  # Geçersiz format → reddet
+
+
 def saat_listesi_olustur(baslangic_saat: str, sure_dk: int):
     """ 
     Verilen başlangıç saatinden itibaren hizmet süresi boyunca 
-    oluşacak tüm 15 dakikalık slotları liste olarak döner.
-    Ceiling division kullanır: 40dk → 3 slot (45dk bloke), 40//15=2 değil!
+    oluşacak tüm 30 DAKIKALIK slotları liste olarak döner.
+    Ceiling division kullanır: 40dk → 2 slot (60dk bloke), 90dk → 3 slot.
+    30 dakikalık birim istatistik sistemiyle tutarlıdır.
+    Örnek: 3 saatlik hizmet → 6 slot (3*60/30=6) kapar.
+    
+    Önemli: Başlangıç saati DAHİLDİR. Yani "10:00" başlangıçlı 90dk hizmet:
+    → ["10:00", "10:30", "11:00"] (3 slot) döner.
     """
-    import math
     slotlar = []
     format_str = "%H:%M"
     try:
         mevcut_vakit = datetime.strptime(baslangic_saat, format_str)
-        # Ceiling: 40dk → ceil(40/15)=3 slot, 30dk → 2 slot, 45dk → 3 slot
-        adim_sayisi = math.ceil(sure_dk / 15)
+        # Ceiling: 40dk → ceil(40/30)=2 slot, 30dk → 1 slot, 90dk → 3 slot
+        adim_sayisi = math.ceil(sure_dk / 30)
         for _ in range(adim_sayisi):
             slotlar.append(mevcut_vakit.strftime(format_str))
-            mevcut_vakit += timedelta(minutes=15)
+            mevcut_vakit += timedelta(minutes=30)
     except Exception:
         pass
     return slotlar
 
+
 def cakisma_var_mi(baslangic_saat: str, sure_dk: int, dolu_slotlar_listesi: list, is_sunday: bool):
     """ 
     Belirli bir saat ve sürenin mevcut doluluklarla ve mesaiyle 
-    çakışıp çakışmadığını denetler. (Dakika hassasiyetli)
+    çakışıp çakışmadığını denetler. (30 dakikalık slot bazında)
+    
+    True = çakışma VAR (randevu alınamaz)
+    False = çakışma YOK (randevu alınabilir)
     """
     talep_edilen = saat_listesi_olustur(baslangic_saat, sure_dk)
     
-    # Kapanış sınırını tam dakika olarak hesaplayalım
-    kapanis_saati = 17 if is_sunday else 22
+    # Eğer hiç slot oluşmadıysa (geçersiz saat vs.) → çakışma var say
+    if not talep_edilen:
+        return True
+    
+    # Kapanış dakika cinsinden
+    kapanis_dk = (17 if is_sunday else 22) * 60
+    acilis_dk = 10 * 60  # 10:00
     
     for s in talep_edilen:
         try:
-            # "16:45" -> saat: 16, dakika: 45
             saat_parca, dakika_parca = map(int, s.split(":"))
+            slot_dk = saat_parca * 60 + dakika_parca
             
-            # 1. Mesai Dışı Kontrolü (10:00 altı veya kapanış üstü)
-            # Eğer saat kapanış saatine eşitse ama dakika 00'dan büyükse (örn 17:15), yasak!
-            if saat_parca < 10:
+            # 1. Mesai Dışı Kontrolü — açılış: 10:00
+            if slot_dk < acilis_dk:
                 return True
-            if saat_parca > kapanis_saati or (saat_parca == kapanis_saati and dakika_parca > 0):
+            # Bu slot'un sonu (slot_dk + 30) kapanışı geçiyorsa yasak
+            if slot_dk + 30 > kapanis_dk:
                 return True
                 
             # 2. Doluluk Kontrolü
@@ -120,6 +174,52 @@ def cakisma_var_mi(baslangic_saat: str, sure_dk: int, dolu_slotlar_listesi: list
             return True
             
     return False
+
+
+def musait_saatler_hesapla(tarih_str: str, berber_id: int, toplam_sure_dk: int, dolu_slotlar: list):
+    """
+    Verilen tarih, berber ve hizmet süresi için müsait olan saatleri döner.
+    
+    Kurallar:
+    1. Geçmiş tarihlere izin verilmez
+    2. Bugünse, geçmiş saatler döndürülmez
+    3. Hizmetin tüm süresi mesai saatleri içinde olmalı
+    4. Hizmetin hiçbir slotu dolu slotlarla çakışmamalı
+    5. Hizmet için yeterli ardışık boş slot yoksa o saat gösterilmez
+    
+    Returns: 
+        list of str — müsait saat listesi ["10:00", "10:30", ...]
+    """
+    secilen_tarih_obj = datetime.strptime(tarih_str, "%Y-%m-%d")
+    is_sunday = secilen_tarih_obj.weekday() == 6
+    
+    kapanis = "17:00" if is_sunday else "22:00"
+    kapanis_dk = int(kapanis.split(":")[0]) * 60
+    
+    # Gerekli slot sayısı
+    gerekli_slot = math.ceil(toplam_sure_dk / 30)
+    
+    musait = []
+    tara = datetime.strptime("10:00", "%H:%M")
+    kapanis_vakit = datetime.strptime(kapanis, "%H:%M")
+    
+    while tara < kapanis_vakit:
+        aday_saat = tara.strftime("%H:%M")
+        
+        # Bugünse geçmiş saati atla
+        if gecmis_saat_mi(tarih_str, aday_saat):
+            tara += timedelta(minutes=30)
+            continue
+        
+        # Bu saatten başlayarak hizmet süresince tüm slotlar müsait mi kontrol et
+        if not cakisma_var_mi(aday_saat, toplam_sure_dk, dolu_slotlar, is_sunday):
+            musait.append(aday_saat)
+        
+        tara += timedelta(minutes=30)
+    
+    return musait
+
+
 def dakika_farki_hesapla(randevu_saati_str: str, randevu_tarih_str: str = None):
     """
     Randevuya ne kadar dakika kaldığını hesaplar.
@@ -180,71 +280,73 @@ def hatirlatma_gorevi():
         db.close()
 
 
+import models as _models
+from database import SessionLocal
+from datetime import datetime, timedelta, date as _date
+from firebase_admin import messaging
+
 # --- 5. APScheduler DEĞERLENDİRME GÖREVİ ---
 def degerlendirme_gorevi():
     """
     Her 15 dakikada bir çalışır.
-    Randevu saatinden 2 saat sonra müşteriye 'Bizi Puanla' FCM data bildirimi gönderir.
-    Aynı randevuya ikinci kez bildirim gitmez.
+    Randevu saatinden 2 saat sonra müşteriye 'Bizi Puanla' bildirimi gönderir.
     """
-    from database import SessionLocal
-    import models as _models
-    from datetime import date as _date
-
     db = SessionLocal()
     try:
         bugun_str = _date.today().strftime("%Y-%m-%d")
+        simdi = datetime.now()
 
-        # Bugünkü, onaylanmış, henüz değerlendirme bildirimi gönderilmemiş randevular
+        # Bugünkü, onaylanmış, bildirim gitmemiş ve puanlanmamış randevuları bul
         randevular = db.query(_models.Randevu).filter(
             _models.Randevu.tarih == bugun_str,
             _models.Randevu.durum == "onaylandi",
-            _models.Randevu.degerlendirme_bildirimi_gonderildi == False
+            _models.Randevu.degerlendirme_bildirimi_gonderildi == False,
+            _models.Randevu.puan == None # Zaten puanladıysa tekrar sorma
         ).all()
-
-        simdi = datetime.now()
 
         for r in randevular:
             try:
+                # Randevu saatini datetime objesine çevir
                 randevu_vakti = datetime.combine(
                     simdi.date(),
                     datetime.strptime(r.saat, "%H:%M").time()
                 )
-                # Randevu saatinden 2 saat sonra geçtiyse bildirim gönder
+
+                # Randevu saatinden 2 saat geçtiyse tetiğe bas
                 if simdi >= randevu_vakti + timedelta(hours=2):
                     if r.musteri and r.musteri.fcm_token:
                         berber_adi = f"{r.berber.ad} {r.berber.soyad}" if r.berber else "Berber"
-                        berber_foto = r.berber.foto_url or "" if r.berber else ""
-
-                        # Data-only payload → uygulama foreground/background/killed durumda çalışır
+                        
+                        # FCM Mesajını Oluştur
                         message = messaging.Message(
                             data={
                                 "type": "degerlendirme",
                                 "randevu_id": str(r.id),
                                 "berber_adi": berber_adi,
-                                "berber_foto_url": berber_foto,
                                 "baslik": "Randevunu Nasıl Buldun? ⭐",
                                 "mesaj": f"{berber_adi}'i puanlamak ister misin?"
                             },
                             notification=messaging.Notification(
-                                title="Randevunu Nasıl Buldun? ⭐",
-                                body=f"{berber_adi}'i puanlamak ister misin?"
+                                title="Sıhhatler Olsun! 💈",
+                                body=f"{berber_adi} ile olan tıraşını puanlamak ister misin?"
                             ),
                             token=r.musteri.fcm_token,
                         )
+                        
                         try:
                             messaging.send(message)
                             print(f"[Değerlendirme] Randevu {r.id} için bildirim gönderildi.")
                         except Exception as e:
-                            print(f"[Değerlendirme] Bildirim gönderilemedi: {e}")
+                            print(f"[Değerlendirme] Bildirim hatası: {e}")
 
-                    # Token yoksa da flag'i true yap (bir daha deneme)
+                    # Bildirim gitse de gitmese de (token yoksa) bu randevuyu işaretle ki döngüye girmesin
                     r.degerlendirme_bildirimi_gonderildi = True
+            
             except Exception as e:
-                print(f"[Değerlendirme] Randevu {r.id} işlenirken hata: {e}")
+                print(f"[Değerlendirme] Randevu {r.id} döngü hatası: {e}")
 
-        db.commit()
+        db.commit() # Tüm değişiklikleri DB'ye mühürle
     except Exception as e:
-        print(f"[APScheduler] Değerlendirme görevi hata verdi: {e}")
+        print(f"[APScheduler] Genel görev hatası: {e}")
     finally:
         db.close()

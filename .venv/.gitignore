@@ -1,0 +1,19 @@
+# Python gereksizleri
+.venv/
+__pycache__/
+*.py[cod]
+*.db
+.pytest_cache/
+
+# Flutter gereksizleri
+App/build/
+App/.dart_tool/
+App/.flutter-plugins
+App/.flutter-plugins-dependencies
+App/.packages
+App/.pub-cache/
+App/.pub/
+
+# Sistem gereksizleri
+.DS_Store
+Thumbs.db

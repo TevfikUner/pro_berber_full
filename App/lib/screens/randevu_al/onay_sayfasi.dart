@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/berber_desen.dart';
-import '../home/home_screen.dart';
+import '../main_screen.dart'; // BURASI GÜNCELLENDİ: Ana çatıya yönlendirme için
 
 class OnaySayfasi extends StatefulWidget {
   final String tarih;
@@ -162,9 +162,10 @@ class _OnaySayfasiState extends State<OnaySayfasi>
                             ),
                             child: ElevatedButton(
                               onPressed: () {
+                                // BURASI KRİTİK: Artık MainScreen'e gidiyoruz
                                 Navigator.of(context).pushAndRemoveUntil(
                                   MaterialPageRoute(
-                                      builder: (_) => const HomeScreen()),
+                                      builder: (_) => const MainScreen()),
                                   (_) => false,
                                 );
                               },

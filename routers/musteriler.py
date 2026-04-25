@@ -66,3 +66,30 @@ def profil_guncelle(
 
     db.commit()
     return {"mesaj": "Profil bilgilerin mermi gibi güncellendi!", "yeni_bilgiler": {"ad": musteri.ad, "soyad": musteri.soyad}}
+
+
+@router.put("/favori-berber")
+def favori_berber_guncelle(
+    berber_id: int = None,  # None gönderilirse favori kaldırılır
+    x_firebase_uid: str = Header(...),
+    db: Session = Depends(get_db),
+):
+    """Müşterinin favori berberini günceller veya kaldırır."""
+    musteri = db.query(models.Musteri).filter(
+        models.Musteri.firebase_uid == x_firebase_uid
+    ).first()
+    if not musteri:
+        raise HTTPException(status_code=404, detail="Müşteri bulunamadı!")
+
+    if berber_id is not None:
+        # Berber var mı kontrol et
+        berber = db.query(models.Berber).filter(models.Berber.id == berber_id).first()
+        if not berber:
+            raise HTTPException(status_code=404, detail="Berber bulunamadı!")
+
+    musteri.favori_berber_id = berber_id
+    db.commit()
+
+    if berber_id:
+        return {"mesaj": "Favori berberin güncellendi!", "favori_berber_id": berber_id}
+    return {"mesaj": "Favori berber kaldırıldı."}

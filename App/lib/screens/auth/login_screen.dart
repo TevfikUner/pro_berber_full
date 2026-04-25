@@ -4,7 +4,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/altin_buton.dart';
 import '../../widgets/berber_desen.dart';
 import '../../services/auth_service.dart';
-import '../home/home_screen.dart';
+import '../main_screen.dart';
 import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -28,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await AuthService.girisYap(_emailCtrl.text.trim(), _sifreCtrl.text);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const HomeScreen()));
+          MaterialPageRoute(builder: (_) => const MainScreen()));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -167,7 +167,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 32),
+                    const SizedBox(height: 8),
+                    // Geri butonu
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: IconButton(
+                        icon: const Icon(Icons.arrow_back_ios,
+                            color: AppTheme.gold),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     // Logo
                     Center(
                       child: Container(

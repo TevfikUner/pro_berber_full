@@ -8,6 +8,7 @@ import '../../services/auth_service.dart';
 import '../auth/login_screen.dart';
 import '../randevu_al/randevu_flow.dart';
 import 'randevularim_screen.dart';
+import '../profil_ekrani.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -112,6 +113,27 @@ class _HomeScreenState extends State<HomeScreen> {
                 backgroundColor: AppTheme.black,
                 elevation: 0,
                 pinned: true,
+                centerTitle: true, // Yazıyı tam ortaya aldık!
+                leading: Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: GestureDetector(
+                    onTap: () {
+                      // Profil ekranına yönlendirme
+                      Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const ProfilEkrani()));
+                    },
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppTheme.gold, width: 1.5),
+                      ),
+                      child: const CircleAvatar(
+                        backgroundColor: AppTheme.surface,
+                        child: Icon(Icons.person, color: AppTheme.gold, size: 20),
+                      ),
+                    ),
+                  ),
+                ),
                 title: Text('PRO BERBER',
                     style: GoogleFonts.playfairDisplay(
                         color: AppTheme.gold,
@@ -132,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       if (context.mounted) {
                         Navigator.of(context).pushAndRemoveUntil(
                           MaterialPageRoute(builder: (_) => const LoginScreen()),
-                          (_) => false,
+                              (_) => false,
                         );
                       }
                     },

@@ -44,30 +44,30 @@ class _Adim4SaatState extends State<Adim4Saat> {
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
   // ── Slot Algoritması ─────────────────────────────────────
-  // 15-dk blok listesi oluştur
-  List<String> _generate15MinBlocks(String startTime, int durationMin) {
+  // 30-dk blok listesi oluştur (backend ile aynı birim)
+  List<String> _generate30MinBlocks(String startTime, int durationMin) {
     final blocks = <String>[];
     final parts = startTime.split(':');
     int totalMin = int.parse(parts[0]) * 60 + int.parse(parts[1]);
-    // Ceiling: 40dk → 3 blok (3×15=45dk bloke), 30dk → 2 blok
-    final steps = (durationMin + 14) ~/ 15;
+    // Ceiling: 40dk → 2 blok (2×30=60dk bloke), 90dk → 3 blok
+    final steps = (durationMin + 29) ~/ 30;
     for (int i = 0; i < steps; i++) {
-      final h = (totalMin + i * 15) ~/ 60;
-      final m = (totalMin + i * 15) % 60;
+      final h = (totalMin + i * 30) ~/ 60;
+      final m = (totalMin + i * 30) % 60;
       blocks.add('${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}');
     }
     return blocks;
   }
 
   SlotDurumu _slotDurumu(String saat, int toplamSureDk, bool isPazar) {
-    final blocks = _generate15MinBlocks(saat, toplamSureDk);
+    final blocks = _generate30MinBlocks(saat, toplamSureDk);
     if (blocks.isEmpty) return SlotDurumu.kapsamDisi;
 
-    // Kapanış kontrolü
+    // Kapanış kontrolü: son bloğun sonu (+ 30dk) kapanışı geçmemeli
     final kapanis = isPazar ? 17 * 60 : 22 * 60;
     final lastMin = () {
       final p = blocks.last.split(':');
-      return int.parse(p[0]) * 60 + int.parse(p[1]) + 15; // son bloğun sonu
+      return int.parse(p[0]) * 60 + int.parse(p[1]) + 30; // son bloğun sonu
     }();
     if (lastMin > kapanis) return SlotDurumu.kapsamDisi;
 
@@ -76,7 +76,7 @@ class _Adim4SaatState extends State<Adim4Saat> {
     final startMin = int.parse(parts[0]) * 60 + int.parse(parts[1]);
     if (startMin < 10 * 60) return SlotDurumu.kapsamDisi;
 
-    // Doluluk kontrolü
+    // Doluluk kontrolü — backend 30dk slotlar yolluyor, blocks da 30dk
     for (final b in blocks) {
       if (_doluSlotlar.contains(b)) return SlotDurumu.dolu;
     }

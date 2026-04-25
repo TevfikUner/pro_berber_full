@@ -5,7 +5,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import models, utils
 from database import engine
 from routers import dukkan, randevular, berberler, musteriler, hizmetler, kurumsal
-from routers import degerlendirmeler, tatil, raporlar
+from routers import degerlendirmeler, tatil, raporlar, isletmeler
 
 models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Pro Berber Kurumsal")
@@ -61,6 +61,7 @@ app.include_router(kurumsal.router)
 app.include_router(degerlendirmeler.router)  # ✅ Yeni: Değerlendirme & Puan
 app.include_router(tatil.router)             # ✅ Yeni: Tatil Günleri
 app.include_router(raporlar.router)          # ✅ Yeni: Admin Raporlar
+app.include_router(isletmeler.router)        # ✅ Yeni: İşletme Kayıt
 
 @app.get("/")
 def home():

@@ -21,17 +21,51 @@ class _Adim5FormState extends State<Adim5Form> {
   final _adCtrl = TextEditingController();
   final _soyadCtrl = TextEditingController();
   final _telefonCtrl = TextEditingController();
+  
   bool _loading = false;
+  bool _profilYukleniyor = true; // Yeni: Veri çekilirken ekranı bekletmek için
 
   @override
   void initState() {
     super.initState();
-    // Firebase'den email'i al, adı önceden doldur (opsiyonel)
-    final user = FirebaseAuth.instance.currentUser;
-    if (user?.displayName != null) {
-      final parts = user!.displayName!.split(' ');
-      if (parts.isNotEmpty) _adCtrl.text = parts.first;
-      if (parts.length > 1) _soyadCtrl.text = parts.last;
+    _profilBilgileriniCek();
+  }
+
+  // ====================================================================
+  // 🚀 SİHİRLİ DOKUNUŞ: Kullanıcı bilgilerini otomatik çekip doldurma
+  // ====================================================================
+  Future<void> _profilBilgileriniCek() async {
+    try {
+      // 1. Önce Firebase Auth'dan temel isim bilgisini al (Yedek Plan)
+      final user = FirebaseAuth.instance.currentUser;
+      if (user?.displayName != null) {
+        final parts = user!.displayName!.split(' ');
+        if (parts.isNotEmpty) _adCtrl.text = parts.first;
+        if (parts.length > 1) _soyadCtrl.text = parts.sublist(1).join(' ');
+      }
+
+      // 2. ApiService'den adamın detaylı profilini (Telefon dahil) çek
+      // (Bunu api_service.dart'a ekleyeceğiz)
+       final profil = await ApiService.profilGetir();
+      if (profil != null) {
+        if (profil['ad'] != null && profil['ad'].toString().isNotEmpty) {
+          _adCtrl.text = profil['ad'];
+        }
+        if (profil['soyad'] != null && profil['soyad'].toString().isNotEmpty) {
+          _soyadCtrl.text = profil['soyad'];
+        }
+        if (profil['telefon'] != null && profil['telefon'].toString().isNotEmpty) {
+          // Başındaki 0 varsa temizle (Çünkü formumuzda sabit 0 var)
+          String tel = profil['telefon'].toString();
+          if (tel.startsWith('0')) tel = tel.substring(1);
+          _telefonCtrl.text = tel;
+        }
+      }
+      
+    } catch (e) {
+      // Hata olursa sorun yok, kutular boş kalır müşteri kendisi yazar
+    } finally {
+      if (mounted) setState(() => _profilYukleniyor = false);
     }
   }
 
@@ -42,7 +76,6 @@ class _Adim5FormState extends State<Adim5Form> {
     final provider = context.read<RandevuProvider>();
 
     try {
-      // Null guard — gerekli değerler seçilmediyse hata göster
       final berber = provider.seciliBerber;
       final tarih = provider.seciliTarih;
       final saat = provider.seciliSaat;
@@ -60,18 +93,17 @@ class _Adim5FormState extends State<Adim5Form> {
         hizmetIds: provider.seciliHizmetler.map((h) => h.id).toList(),
         ad: _adCtrl.text.trim(),
         soyad: _soyadCtrl.text.trim(),
-        telefon: '0${_telefonCtrl.text.trim()}',
+        telefon: '0${_telefonCtrl.text.trim()}', // Formdan gelenin başına 0 ekle
       );
 
       if (!mounted) return;
 
-      // ⚠️ Builder lazy çağrılır — reset() öncesinde yerel kopyalar al!
       final List<String> hizmetAdlari =
           provider.seciliHizmetler.map((h) => h.ad).toList();
       final double toplamFiyat = provider.toplamFiyat;
       final String berberAdi = berber.adSoyad;
 
-      provider.reset(); // Önce sıfırla
+      provider.reset(); 
 
       if (!mounted) return;
 
@@ -159,54 +191,67 @@ class _Adim5FormState extends State<Adim5Form> {
                 style: GoogleFonts.playfairDisplay(
                     color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
-            Row(children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _adCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Ad',
-                    prefixIcon: Icon(Icons.person_outline, color: AppTheme.gold),
-                  ),
-                  validator: (v) => (v == null || v.isEmpty) ? 'Zorunlu' : null,
+            
+            // Veri çekilirken yükleniyor dairesi göster, bitince form kutularını göster
+            _profilYukleniyor 
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(32.0),
+                    child: CircularProgressIndicator(color: AppTheme.gold),
+                  )
+                )
+              : Column(
+                  children: [
+                    Row(children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _adCtrl,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            labelText: 'Ad',
+                            prefixIcon: Icon(Icons.person_outline, color: AppTheme.gold),
+                          ),
+                          validator: (v) => (v == null || v.isEmpty) ? 'Zorunlu' : null,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _soyadCtrl,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(labelText: 'Soyad'),
+                          validator: (v) => (v == null || v.isEmpty) ? 'Zorunlu' : null,
+                        ),
+                      ),
+                    ]),
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _telefonCtrl,
+                      keyboardType: TextInputType.phone,
+                      maxLength: 10,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Telefon Numarası',
+                        prefixIcon: Icon(Icons.phone_outlined, color: AppTheme.gold),
+                        prefixText: '0  ',
+                        prefixStyle: TextStyle(
+                            color: AppTheme.gold, fontWeight: FontWeight.bold),
+                        counterText: '',
+                        hintText: '5XX XXX XX XX',
+                        hintStyle: TextStyle(color: Colors.white30),
+                      ),
+                      validator: (v) {
+                        final digits = v?.trim() ?? '';
+                        if (digits.length != 10) {
+                          return 'Hatalı telefon numarası (10 rakam giriniz)';
+                        }
+                        return null;
+                      },
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextFormField(
-                  controller: _soyadCtrl,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(labelText: 'Soyad'),
-                  validator: (v) => (v == null || v.isEmpty) ? 'Zorunlu' : null,
-                ),
-              ),
-            ]),
-            const SizedBox(height: 14),
-            // Telefon alanı: başında sabit "0" prefix gösterilir
-            TextFormField(
-              controller: _telefonCtrl,
-              keyboardType: TextInputType.phone,
-              maxLength: 10,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                labelText: 'Telefon Numarası',
-                prefixIcon: Icon(Icons.phone_outlined, color: AppTheme.gold),
-                prefixText: '0  ',
-                prefixStyle: TextStyle(
-                    color: AppTheme.gold, fontWeight: FontWeight.bold),
-                counterText: '',
-                hintText: '5XX XXX XX XX',
-                hintStyle: TextStyle(color: Colors.white30),
-              ),
-              validator: (v) {
-                final digits = v?.trim() ?? '';
-                if (digits.length != 10) {
-                  return 'Hatalı telefon numarası (10 rakam giriniz)';
-                }
-                return null;
-              },
-            ),
+            
             const SizedBox(height: 32),
             AltinButon(
               text: 'Randevumu Onayla',

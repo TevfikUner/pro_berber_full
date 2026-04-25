@@ -41,4 +41,26 @@ class AuthService {
 
   /// Çıkış yap
   static Future<void> cikisYap() => _auth.signOut();
+
+  /// İşletme sahibi kayıt ol + backend'e işletme ekle
+  static Future<void> isletmeKayitOl({
+    required String email,
+    required String sifre,
+    required String ad,
+    required String soyad,
+    required String telefon,
+    required String isletmeAdi,
+  }) async {
+    final cred = await _auth.createUserWithEmailAndPassword(
+        email: email, password: sifre);
+    final uid = cred.user!.uid;
+    await ApiService.isletmeKayit(
+      ad: ad,
+      soyad: soyad,
+      telefon: telefon,
+      email: email,
+      isletmeAdi: isletmeAdi,
+      firebaseUid: uid,
+    );
+  }
 }

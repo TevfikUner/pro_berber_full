@@ -5,7 +5,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/altin_buton.dart';
 import '../../widgets/berber_desen.dart';
 import '../../services/auth_service.dart';
-import '../home/home_screen.dart';
+import '../main_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -37,7 +37,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        MaterialPageRoute(builder: (_) => const MainScreen()),
         (_) => false,
       );
     } catch (e) {

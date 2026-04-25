@@ -6,6 +6,9 @@ class Randevu {
   final String saat;
   final String durum;
   final double toplamFiyat;
+  // --- YENİ ALANLAR ---
+  final int? puan;   // Puan 1-5 arası olabilir veya henüz verilmemişse null gelir
+  final String? yorum;
 
   const Randevu({
     required this.id,
@@ -15,6 +18,8 @@ class Randevu {
     required this.saat,
     required this.durum,
     required this.toplamFiyat,
+    this.puan,   // Bu alanlar opsiyonel olduğu için süslü parantez içinde
+    this.yorum,
   });
 
   factory Randevu.fromJson(Map<String, dynamic> j) => Randevu(
@@ -25,5 +30,8 @@ class Randevu {
     saat: j['saat'] ?? '',
     durum: j['durum'] ?? '',
     toplamFiyat: (j['toplam_fiyat'] as num).toDouble(),
+    // Backend'den gelen yeni kolonları modele mühürlüyoruz
+    puan: j['puan'],
+    yorum: j['yorum'],
   );
 }

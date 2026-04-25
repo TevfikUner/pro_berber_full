@@ -78,3 +78,114 @@ def dukkan_guncelle(
     
     db.commit()
     return {"mesaj": "Dükkan bilgileri başarıyla güncellendi!"}
+
+
+# --- Keşfet Sekmesi: Salon Listeleme ---
+@router.get("/salonlar")
+def salonlari_listele(
+    sehir: str = None,
+    ilce: str = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Tüm salonları listeler. İsteğe bağlı şehir ve ilçe filtreleri.
+    Keşfet sekmesi bu endpoint'i kullanır.
+    """
+    sorgu = db.query(models.Salon)
+    if sehir:
+        sorgu = sorgu.filter(models.Salon.sehir == sehir)
+    if ilce:
+        sorgu = sorgu.filter(models.Salon.ilce == ilce)
+
+    salonlar = sorgu.all()
+    return [
+        {
+            "id": s.id,
+            "ad": s.ad,
+            "adres": s.adres,
+            "telefon": s.telefon,
+            "foto_url": s.foto_url,
+            "sehir": s.sehir,
+            "ilce": s.ilce,
+            "puan": s.puan,
+            "acilis_saati": s.acilis_saati,
+            "kapanis_saati": s.kapanis_saati,
+        }
+        for s in salonlar
+    ]
+
+
+@router.get("/salon/{salon_id}")
+def salon_detay(salon_id: int, db: Session = Depends(get_db)):
+    """
+    Tek bir salonun detay bilgilerini getirir.
+    Fotoğraflar, berberler, iletişim ve konum bilgileri dahil.
+    """
+    salon = db.query(models.Salon).filter(models.Salon.id == salon_id).first()
+    if not salon:
+        raise HTTPException(status_code=404, detail="Salon bulunamadı.")
+
+    # Salon fotoğraflarını getir
+    fotograflar = (
+        db.query(models.SalonFotograf)
+        .filter(models.SalonFotograf.salon_id == salon_id)
+        .order_by(models.SalonFotograf.sira)
+        .all()
+    )
+
+    # Salonun berberlerini getir
+    berberler = (
+        db.query(models.Berber)
+        .filter(models.Berber.salon_id == salon_id)
+        .all()
+    )
+
+    return {
+        "id": salon.id,
+        "ad": salon.ad,
+        "adres": salon.adres,
+        "telefon": salon.telefon,
+        "foto_url": salon.foto_url,
+        "instagram": salon.instagram_url,
+        "whatsapp": salon.whatsapp,
+        "sehir": salon.sehir,
+        "ilce": salon.ilce,
+        "puan": salon.puan,
+        "acilis_saati": salon.acilis_saati,
+        "kapanis_saati": salon.kapanis_saati,
+        "konum": {
+            "lat": salon.konum_lat,
+            "lng": salon.konum_long,
+        },
+        "fotograflar": [
+            {"id": f.id, "foto_url": f.foto_url, "sira": f.sira}
+            for f in fotograflar
+        ],
+        "berberler": [
+            {
+                "id": b.id,
+                "ad": b.ad,
+                "soyad": b.soyad,
+                "uzmanlik": b.uzmanlik,
+                "puan": b.puan,
+                "foto_url": b.foto_url,
+            }
+            for b in berberler
+        ],
+    }
+
+
+# --- Keşfet: Mevcut şehir ve ilçe listesi ---
+@router.get("/filtreler")
+def filtre_secenekleri(db: Session = Depends(get_db)):
+    """Keşfet sekmesindeki filtre dropdown'ları için mevcut şehir/ilçe listesini döner."""
+    salonlar = db.query(models.Salon).all()
+    sehirler = sorted(set(s.sehir for s in salonlar if s.sehir))
+    ilceler = {}
+    for s in salonlar:
+        if s.sehir and s.ilce:
+            ilceler.setdefault(s.sehir, set()).add(s.ilce)
+    return {
+        "sehirler": sehirler,
+        "ilceler": {k: sorted(v) for k, v in ilceler.items()},
+    }

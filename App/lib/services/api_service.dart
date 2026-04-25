@@ -198,4 +198,128 @@ class ApiService {
     if (res.statusCode == 200) return body as Map<String, dynamic>;
     throw Exception((body as Map)['detail']?.toString() ?? 'Değerlendirme gönderilemedi');
   }
+  // ... senin önceki kodların (örneğin degerlendirme vs.)
+
+  // --- KULLANICI PROFİLİNİ GETİR (Bunu içeri aldık!) ---
+  static Future<Map<String, dynamic>?> profilGetir() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return null;
+
+      final response = await http.get(
+        Uri.parse('$_base/randevular/profil'),
+        headers: {
+          'Content-Type': 'application/json',
+          'x-firebase-uid': uid,
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(utf8.decode(response.bodyBytes));
+      }
+      return null;
+    } catch (e) {
+      print("Profil getirme hatası: $e");
+      return null;
+    }
+  }
+  // --- KULLANICI PROFİLİNİ GÜNCELLE ---
+  static Future<void> profilGuncelle({
+    required String ad,
+    required String soyad,
+    required String telefon,
+  }) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) throw Exception("Kullanıcı girişi bulunamadı.");
+
+    final response = await http.post(
+      Uri.parse('$_base/randevular/profil/guncelle'),
+      headers: {
+        'Content-Type': 'application/json',
+        'x-firebase-uid': uid,
+      },
+      body: json.encode({
+        'ad': ad,
+        'soyad': soyad,
+        'telefon': telefon,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception("Profil güncellenirken bir hata oluştu.");
+    }
+  }
+
+  // ── İşletme Kayıt ────────────────────────────────────────
+  static Future<void> isletmeKayit({
+    required String ad,
+    required String soyad,
+    required String telefon,
+    required String email,
+    required String isletmeAdi,
+    required String firebaseUid,
+  }) async {
+    final url = _buildQuery('/isletmeler/kayit', {
+      'ad': ad,
+      'soyad': soyad,
+      'telefon': telefon,
+      'email': email,
+      'isletme_adi': isletmeAdi,
+      'firebase_uid': firebaseUid,
+    });
+    final res = await http.post(Uri.parse(url)).timeout(AppConfig.timeout);
+    if (res.statusCode != 200) {
+      final body = json.decode(utf8.decode(res.bodyBytes));
+      throw Exception(body['detail']?.toString() ?? 'İşletme kaydı başarısız');
+    }
+  }
+
+  // ── Keşfet: Salon Listesi ────────────────────────────────
+  static Future<List<Map<String, dynamic>>> getSalonlar({
+    String? sehir,
+    String? ilce,
+  }) async {
+    final params = <String, dynamic>{};
+    if (sehir != null) params['sehir'] = sehir;
+    if (ilce != null) params['ilce'] = ilce;
+    final url = _buildQuery('/dukkan/salonlar', params);
+    final res = await http.get(Uri.parse(url)).timeout(AppConfig.timeout);
+    if (res.statusCode == 200) {
+      final List data = json.decode(utf8.decode(res.bodyBytes));
+      return data.cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  // ── Keşfet: Salon Detay ──────────────────────────────────
+  static Future<Map<String, dynamic>> getSalonDetay(int salonId) async {
+    final res = await http
+        .get(Uri.parse('$_base/dukkan/salon/$salonId'))
+        .timeout(AppConfig.timeout);
+    if (res.statusCode == 200) {
+      return json.decode(utf8.decode(res.bodyBytes));
+    }
+    throw Exception('Salon bilgileri yüklenemedi');
+  }
+
+  // ── Keşfet: Filtre Seçenekleri ───────────────────────────
+  static Future<Map<String, dynamic>> getFiltreler() async {
+    final res = await http
+        .get(Uri.parse('$_base/dukkan/filtreler'))
+        .timeout(AppConfig.timeout);
+    if (res.statusCode == 200) {
+      return json.decode(utf8.decode(res.bodyBytes));
+    }
+    return {'sehirler': [], 'ilceler': {}};
+  }
+
+  // ── Favori Berber Güncelle ───────────────────────────────
+  static Future<void> favoriBerberGuncelle(int? berberId) async {
+    final headers = await _authHeaders();
+    final params = <String, dynamic>{};
+    if (berberId != null) params['berber_id'] = berberId;
+    final url = _buildQuery('/musteriler/favori-berber', params);
+    await http.put(Uri.parse(url), headers: headers).timeout(AppConfig.timeout);
+  }
 }
+

@@ -3,8 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 import '../widgets/berber_desen.dart';
-import 'auth/login_screen.dart';
-import 'home/home_screen.dart';
+import 'auth/role_selection_screen.dart';
+import 'main_screen.dart'; // Bu importun doğruluğundan emin ol kanki
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -28,15 +28,19 @@ class _SplashScreenState extends State<SplashScreen>
         .animate(CurvedAnimation(parent: _ctrl, curve: Curves.elasticOut));
     _ctrl.forward();
 
+    // 2 saniye bekle ve yönlendir
     Future.delayed(const Duration(seconds: 2), _navigate);
   }
 
   void _navigate() {
     final user = FirebaseAuth.instance.currentUser;
     if (!mounted) return;
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => user != null ? const HomeScreen() : const LoginScreen(),
+        builder: (_) => user != null 
+            ? const MainScreen() // Giriş yaptıysa direkt 4 menülü yere git
+            : const RoleSelectionScreen(), // Yapmadıysa rol seçimine git
       ),
     );
   }
@@ -62,7 +66,7 @@ class _SplashScreenState extends State<SplashScreen>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Logo
+                    // Logo Alanı
                     Container(
                       width: 180,
                       height: 180,
@@ -79,7 +83,7 @@ class _SplashScreenState extends State<SplashScreen>
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(24),
                         child: Image.asset(
-                          'assets/images/logo.png',
+                          'assets/images/logo.png', // Logo yolun doğru mu kontrol et
                           fit: BoxFit.contain,
                         ),
                       ),
@@ -104,13 +108,12 @@ class _SplashScreenState extends State<SplashScreen>
                       ),
                     ),
                     const SizedBox(height: 48),
-                    SizedBox(
+                    const SizedBox(
                       width: 24,
                       height: 24,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation(
-                            AppTheme.gold.withOpacity(0.6)),
+                        valueColor: AlwaysStoppedAnimation(Color(0xFFC9A84C)),
                       ),
                     )
                   ],

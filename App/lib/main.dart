@@ -7,31 +7,25 @@ import 'theme/app_theme.dart';
 import 'providers/randevu_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/degerlendirme_ekrani.dart';
+import 'screens/main_screen.dart'; // Eklendi
 
-/// Global navigator key — FCM background handler'dan navigate için.
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-/// FCM background/terminated handler (top-level, isolate-safe olmalı)
 @pragma('vm:entry-point')
 Future<void> _fcmBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
-  // Background'da sadece OS bildirimini gösterir; navigate açılışta yapılır.
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  await initializeDateFormatting('tr_TR', null); // Türkçe takvim locale
-
-  // FCM arka plan handler'ı kaydet
+  await initializeDateFormatting('tr_TR', null);
   FirebaseMessaging.onBackgroundMessage(_fcmBackgroundHandler);
-
   runApp(const BerberApp());
 }
 
 class BerberApp extends StatefulWidget {
   const BerberApp({super.key});
-
   @override
   State<BerberApp> createState() => _BerberAppState();
 }
@@ -44,42 +38,18 @@ class _BerberAppState extends State<BerberApp> {
   }
 
   void _fcmAyarla() {
-    // --- İzin iste (iOS + Android 13+) ---
-    FirebaseMessaging.instance.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    // --- Foreground bildirimi geldiğinde ---
-    FirebaseMessaging.onMessage.listen((RemoteMessage msg) {
-      if (msg.data['type'] == 'degerlendirme') {
-        _degerlendirmeEkraniniAc(msg.data);
-      }
+    FirebaseMessaging.instance.requestPermission();
+    FirebaseMessaging.onMessage.listen((msg) {
+      if (msg.data['type'] == 'degerlendirme') _degerlendirmeEkraniniAc(msg.data);
     });
-
-    // --- Bildirime tıklanarak uygulama açıldığında (background → foreground) ---
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage msg) {
-      if (msg.data['type'] == 'degerlendirme') {
-        _degerlendirmeEkraniniAc(msg.data);
-      }
-    });
-
-    // --- Uygulama tamamen kapalıyken bildirime tıklanarak açıldığında ---
-    FirebaseMessaging.instance.getInitialMessage().then((msg) {
-      if (msg != null && msg.data['type'] == 'degerlendirme') {
-        // Splash bitmeden navigate etme — 2sn bekle
-        Future.delayed(const Duration(seconds: 2), () {
-          _degerlendirmeEkraniniAc(msg.data);
-        });
-      }
+    FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+      if (msg.data['type'] == 'degerlendirme') _degerlendirmeEkraniniAc(msg.data);
     });
   }
 
   void _degerlendirmeEkraniniAc(Map<String, dynamic> data) {
     final randevuId = int.tryParse(data['randevu_id']?.toString() ?? '');
     if (randevuId == null) return;
-
     navigatorKey.currentState?.push(
       MaterialPageRoute(
         builder: (_) => DegerlendirmeEkrani(
@@ -102,7 +72,7 @@ class _BerberAppState extends State<BerberApp> {
         debugShowCheckedModeBanner: false,
         theme: AppTheme.theme,
         navigatorKey: navigatorKey,
-        home: const SplashScreen(),
+        home: const SplashScreen(), // Başlangıç her zaman Splash
       ),
     );
   }

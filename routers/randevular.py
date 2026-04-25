@@ -1,9 +1,11 @@
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from auth import admin_dogrula
 from sqlalchemy.orm import Session
 from database import get_db
 import models, utils
 from datetime import datetime, timedelta
+import math
 
 router = APIRouter(prefix="/randevular", tags=["Randevu İşlemleri"])
 
@@ -15,6 +17,7 @@ def musait_takvim_getir(
 ):
     """Flutter takvimi için önümüzdeki 14 günlük çalışma saatlerini döner.
     Tatil günleri ve (berber_id verilmişse) berber izin günleri hariç tutulur.
+    Geçmiş günler otomatik olarak hariç tutulur.
     """
     gunler = utils.musait_gunleri_listele(14)
 
@@ -43,7 +46,6 @@ def musait_takvim_getir(
 # --- 1b. ANA SAYFA İSTATİSTİK ---
 @router.get("/istatistik")
 def istatistik_getir(db: Session = Depends(get_db)):
-    import math
     import datetime as _dt
 
     # 1. Bugünün tarihi
@@ -67,7 +69,7 @@ def istatistik_getir(db: Session = Depends(get_db)):
     # Pazar    (6)   : 10:00–17:00 =  7 saat = 14 slot/berber
     gun_index = simdi.weekday()
     mesai_saati = 7 if gun_index == 6 else 12
-    slot_per_berber = mesai_saati * 2          # ✅ 30dk birim: 12 saat → 24 slot
+    slot_per_berber = mesai_saati * 2          # 30dk birim: 12 saat → 24 slot
     toplam_slot = berber_sayisi * slot_per_berber
 
     # 5. Bugünkü onaylı randevuları çek
@@ -77,12 +79,13 @@ def istatistik_getir(db: Session = Depends(get_db)):
     ).all()
 
     # 6. Dolu slot sayısını hesapla (30dk birim — toplam_slot ile eşleşiyor)
+    # 3 saatlik hizmet = 180dk → ceil(180/30) = 6 slot kaplar
     dolu_slot_sayisi = 0
     for r in bugunki_randevular:
         sure = sum(h.sure for h in r.hizmetler) if r.hizmetler else 30
         if sure == 0:
             sure = 30
-        dolu_slot_sayisi += math.ceil(sure / 30)  # ✅ 30dk birim
+        dolu_slot_sayisi += math.ceil(sure / 30)  # 30dk birim
 
     # 7. Sonuçları dön
     return {
@@ -107,6 +110,37 @@ def randevu_olustur(
     telefon: str = Query(default=""),
     db: Session = Depends(get_db)
 ):
+    # ============================================================
+    # DOĞRULAMA 1: Geçmiş tarih kontrolü
+    # ============================================================
+    if utils.gecmis_tarih_mi(tarih):
+        raise HTTPException(
+            status_code=400,
+            detail="Geçmiş bir tarihe randevu alınamaz."
+        )
+
+    # ============================================================
+    # DOĞRULAMA 2: Bugünse geçmiş saat kontrolü
+    # ============================================================
+    if utils.gecmis_saat_mi(tarih, saat):
+        raise HTTPException(
+            status_code=400,
+            detail="Geçmiş bir saate randevu alınamaz."
+        )
+
+    # ============================================================
+    # DOĞRULAMA 3: Saat formatı kontrolü (sadece 30dk slotlar: XX:00 veya XX:30)
+    # ============================================================
+    try:
+        saat_obj = datetime.strptime(saat, "%H:%M")
+        if saat_obj.minute not in (0, 30):
+            raise HTTPException(
+                status_code=400,
+                detail="Randevu saati sadece tam veya yarım saat olabilir (örn: 10:00, 10:30)."
+            )
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Geçersiz saat formatı. Örnek: 14:30")
+
     # Müşteri ara — yoksa form bilgileriyle otomatik oluştur
     musteri = db.query(models.Musteri).filter(
         models.Musteri.firebase_uid == x_firebase_uid
@@ -135,10 +169,32 @@ def randevu_olustur(
     toplam_sure = sum(h.sure for h in hizmetler)
     anlik_toplam_fiyat = sum(h.fiyat for h in hizmetler)
 
-    # Doluluk Kontrolü (Seçilen tarihe göre)
+    # Gerekli slot sayısını hesapla (bilgi amaçlı)
+    gerekli_slot = math.ceil(toplam_sure / 30)
+
+    # ============================================================
+    # DOĞRULAMA 4: Mesai saatleri kontrolü
+    # ============================================================
     secilen_tarih_obj = datetime.strptime(tarih, "%Y-%m-%d")
     is_sunday = secilen_tarih_obj.weekday() == 6
+    kapanis_dk = (17 if is_sunday else 22) * 60
     
+    saat_parca, dakika_parca = map(int, saat.split(":"))
+    baslangic_dk = saat_parca * 60 + dakika_parca
+    bitis_dk = baslangic_dk + toplam_sure
+    
+    if baslangic_dk < 10 * 60:
+        raise HTTPException(status_code=400, detail="Dükkan 10:00'dan önce açık değil.")
+    if bitis_dk > kapanis_dk:
+        kapanis_str = "17:00" if is_sunday else "22:00"
+        raise HTTPException(
+            status_code=400,
+            detail=f"Hizmet süresi ({toplam_sure} dk) mesai bitimine ({kapanis_str}) sığmıyor."
+        )
+
+    # ============================================================
+    # DOĞRULAMA 5: Doluluk & çakışma kontrolü
+    # ============================================================
     mevcut_randevular = db.query(models.Randevu).filter(
         models.Randevu.berber_id == berber_id,
         models.Randevu.tarih == tarih,
@@ -148,51 +204,76 @@ def randevu_olustur(
     dolu_slotlar = []
     for r in mevcut_randevular:
         r_toplam_sure = sum(h.sure for h in r.hizmetler)
+        if r_toplam_sure == 0:
+            r_toplam_sure = 30
         dolu_slotlar.extend(utils.saat_listesi_olustur(r.saat, r_toplam_sure))
 
-    # Yeni randevunun toplam süresi için çakışma kontrolü
-    if not utils.cakisma_var_mi(saat, toplam_sure, dolu_slotlar, is_sunday):
-        yeni = models.Randevu(
-            musteri_id=musteri.id,
-            berber_id=berber_id,
-            saat=saat,
-            tarih=tarih,
-            durum="onaylandi",
-            hizmetler=hizmetler,
-            toplam_fiyat=anlik_toplam_fiyat # Fiyatı buraya mühürledik!
-        )
-        db.add(yeni)
-        db.commit()
-        db.refresh(yeni)  # 🔧 Düzeltme: ID ve diğer DB alanlarını güncelle
-
-        # --- BİLDİRİM ---
-        if musteri.fcm_token:
-            utils.bildirim_gonder(
-                token=musteri.fcm_token,
-                baslik="Randevu Onayı 💈",
-                mesaj=f"Kanki {tarih} günü {saat} saati için randevun alındı. Toplam: {anlik_toplam_fiyat} TL"
-            )
-
-        return {
-            "mesaj": "Randevu başarıyla alındı!",
-            "randevu_id": yeni.id,  # 🔧 Düzeltme: Artık ID dönebiliyoruz
-            "detay": f"Toplam {len(hizmetler)} hizmet, {toplam_sure} dakika, {anlik_toplam_fiyat} TL"
-        }
+    # Yeni randevunun talep ettiği slotları hesapla
+    talep_edilen_slotlar = utils.saat_listesi_olustur(saat, toplam_sure)
     
-    # Doluysa Öneri Mantığı
-    oneriler = []
-    tara = datetime.strptime("10:00", "%H:%M")
-    kapanis = "17:00" if is_sunday else "22:00"
-    while tara < datetime.strptime(kapanis, "%H:%M"):
-        aday = tara.strftime("%H:%M")
-        if not utils.cakisma_var_mi(aday, toplam_sure, dolu_slotlar, is_sunday):
-            oneriler.append(aday)
-        tara += timedelta(minutes=30)
+    # Her bir talep edilen slot dolu mu kontrol et
+    cakisan_slotlar = [s for s in talep_edilen_slotlar if s in dolu_slotlar]
+    
+    if cakisan_slotlar:
+        # Doluysa Öneri Mantığı — müsait saatleri bul
+        oneriler = utils.musait_saatler_hesapla(tarih, berber_id, toplam_sure, dolu_slotlar)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "hata": f"Seçtiğiniz saat ({saat}) dolu. Hizmet {toplam_sure} dk ({gerekli_slot} slot) gerektiriyor.",
+                "cakisan_slotlar": cakisan_slotlar,
+                "öneriler": oneriler[:5]
+            }
+        )
 
-    raise HTTPException(
-        status_code=400, 
-        detail={"hata": f"Toplam {toplam_sure} dakikalık boşluk bulunamadı.", "öneriler": oneriler[:5]}
+    # ============================================================
+    # DOĞRULAMA 6: Yeterli ardışık boş slot kontrolü
+    # ============================================================
+    # cakisma_var_mi fonksiyonu hem doluluk hem mesai dışı kontrolü yapar
+    if utils.cakisma_var_mi(saat, toplam_sure, dolu_slotlar, is_sunday):
+        oneriler = utils.musait_saatler_hesapla(tarih, berber_id, toplam_sure, dolu_slotlar)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "hata": f"Toplam {toplam_sure} dakikalık ({gerekli_slot} slot) boşluk bulunamadı.",
+                "öneriler": oneriler[:5]
+            }
+        )
+
+    # ============================================================
+    # RANDEVU OLUŞTURMA — Tüm kontroller geçildi
+    # ============================================================
+    yeni = models.Randevu(
+        musteri_id=musteri.id,
+        berber_id=berber_id,
+        saat=saat,                    # ← Tam olarak müşterinin seçtiği saat, KAYMA YOK
+        tarih=tarih,
+        durum="onaylandi",
+        hizmetler=hizmetler,
+        toplam_fiyat=anlik_toplam_fiyat # Fiyatı buraya mühürledik!
     )
+    db.add(yeni)
+    db.commit()
+    db.refresh(yeni)  # ID ve diğer DB alanlarını güncelle
+
+    # --- BİLDİRİM ---
+    if musteri.fcm_token:
+        utils.bildirim_gonder(
+            token=musteri.fcm_token,
+            baslik="Randevu Onayı 💈",
+            mesaj=f"Kanki {tarih} günü {saat} saati için randevun alındı. Toplam: {anlik_toplam_fiyat} TL"
+        )
+
+    return {
+        "mesaj": "Randevu başarıyla alındı!",
+        "randevu_id": yeni.id,
+        "saat": saat,
+        "tarih": tarih,
+        "kaplanan_slotlar": talep_edilen_slotlar,
+        "slot_sayisi": gerekli_slot,
+        "detay": f"Toplam {len(hizmetler)} hizmet, {toplam_sure} dakika ({gerekli_slot} slot), {anlik_toplam_fiyat} TL"
+    }
+
 
 # --- 3. DURUM GÜNCELLEME (🔒 Sadece Admin) ---
 @router.patch("/durum-guncelle/{randevu_id}")
@@ -258,6 +339,7 @@ def berber_plani(berber_id: int, db: Session = Depends(get_db)):
 # --- 6. DOLU SAATLERİ LİSTELEME ---
 @router.get("/dolu-saatler/{berber_id}")
 def dolu_saatleri_getir(berber_id: int, tarih: str, db: Session = Depends(get_db)):
+    from datetime import datetime
     randevular = db.query(models.Randevu).filter(
         models.Randevu.berber_id == berber_id,
         models.Randevu.tarih == tarih,
@@ -266,9 +348,95 @@ def dolu_saatleri_getir(berber_id: int, tarih: str, db: Session = Depends(get_db
     
     dolu_slotlar = []
     for r in randevular:
-        r_toplam_sure = sum(h.sure for h in r.hizmetler)
+        r_toplam_sure = sum(h.sure for h in r.hizmetler) if r.hizmetler else 30
         dolu_slotlar.extend(utils.saat_listesi_olustur(r.saat, r_toplam_sure))
+
+    # --- YENİ: Geçmiş saatleri "DOLU" gibi göster (Gri renk için) ---
+    simdi = datetime.now()
+    bugun_str = simdi.strftime("%Y-%m-%d")
+
+    if tarih == bugun_str:
+        su_an_saat = simdi.hour
+        su_an_dakika = simdi.minute
+        
+        # 10:00 ile 24:00 arası tüm slotları kontrol et
+        for saat_degeri in range(10, 24):
+            for dakika_degeri in (0, 30):
+                # Eğer slot şu anki saatten küçükse veya eşitse (geçmişse)
+                if saat_degeri < su_an_saat or (saat_degeri == su_an_saat and dakika_degeri <= su_an_dakika):
+                    gecmis_saat_str = f"{saat_degeri:02d}:{dakika_degeri:02d}"
+                    dolu_slotlar.append(gecmis_saat_str)
+    # ----------------------------------------------------------------
+
     return list(set(dolu_slotlar))
+
+
+# --- 6b. MÜSAİT SAATLERİ LİSTELEME (YENİ - KAYMA KORUMALI) ---
+@router.get("/musait-saatler/{berber_id}")
+def musait_saatleri_getir(
+    berber_id: int,
+    tarih: str,
+    hizmet_ids: list[int] = Query(...),
+    db: Session = Depends(get_db)
+):
+    import math
+    from datetime import datetime
+    
+    # Geçmiş tarih kontrolü
+    if utils.gecmis_tarih_mi(tarih):
+        raise HTTPException(status_code=400, detail="Geçmiş bir tarih için saat sorgulanamaz.")
+    
+    # Hizmetleri bul ve toplam süreyi hesapla
+    hizmetler = db.query(models.Hizmet).filter(models.Hizmet.id.in_(hizmet_ids)).all()
+    if not hizmetler:
+        raise HTTPException(status_code=404, detail="Hizmetler bulunamadı.")
+    
+    toplam_sure = sum(h.sure for h in hizmetler)
+    gerekli_slot = math.ceil(toplam_sure / 30)
+    
+    # Mevcut dolu slotları DB'den çek
+    randevular = db.query(models.Randevu).filter(
+        models.Randevu.berber_id == berber_id,
+        models.Randevu.tarih == tarih,
+        models.Randevu.durum == "onaylandi"
+    ).all()
+    
+    dolu_slotlar = []
+    for r in randevular:
+        r_toplam_sure = sum(h.sure for h in r.hizmetler) if r.hizmetler else 30
+        dolu_slotlar.extend(utils.saat_listesi_olustur(r.saat, r_toplam_sure))
+    
+    # Müsait saatleri hesapla
+    musait = utils.musait_saatler_hesapla(tarih, berber_id, toplam_sure, dolu_slotlar)
+    
+    # =========================================================================
+    # HAYAT KURTARAN DÜZELTME: Grid (Ekran) Kaymasını Önleme Algoritması
+    # =========================================================================
+    # Tüm mesai saatlerini tara. Eğer bir saat 'musait' listesine giremediyse 
+    # (geçmiş saat olduğu için VEYA araya sığmadığı için), onu ZORLA 'dolu_slotlar' 
+    # listesine ekle! Böylece Flutter hiçbir butonu silmez, sadece griye boyar.
+    
+    secilen_tarih_obj = datetime.strptime(tarih, "%Y-%m-%d")
+    is_sunday = secilen_tarih_obj.weekday() == 6
+    kapanis_saati = 17 if is_sunday else 22
+    
+    for saat_degeri in range(10, kapanis_saati):
+        for dakika_degeri in (0, 30):
+            slot_str = f"{saat_degeri:02d}:{dakika_degeri:02d}"
+            
+            # Eğer saat müsait değilse ve halihazırda dolu listesinde de yoksa, doldur!
+            if slot_str not in musait and slot_str not in dolu_slotlar:
+                dolu_slotlar.append(slot_str)
+    # =========================================================================
+    
+    return {
+        "tarih": tarih,
+        "berber_id": berber_id,
+        "toplam_sure_dk": toplam_sure,
+        "gerekli_slot": gerekli_slot,
+        "musait_saatler": musait,
+        "dolu_slotlar": list(set(dolu_slotlar))
+    }
 
 # --- 7. RANDEVU SİLME ---
 @router.delete("/sil/{randevu_id}")
@@ -294,3 +462,51 @@ def randevu_sil(randevu_id: int, x_firebase_uid: str = Header(...), db: Session 
     db.delete(r)
     db.commit()
     return {"mesaj": "Randevu başarıyla silindi."}
+# --- 8. PROFİL BİLGİLERİNİ GETİR ---
+@router.get("/profil")
+def profil_getir(x_firebase_uid: str = Header(...), db: Session = Depends(get_db)):
+    musteri = db.query(models.Musteri).filter(models.Musteri.firebase_uid == x_firebase_uid).first()
+    
+    if not musteri:
+        return {"ad": "", "soyad": "", "telefon": "", "favori_berber_id": None}
+        
+    return {
+        "ad": musteri.ad or "",
+        "soyad": musteri.soyad or "",
+        "telefon": musteri.telefon or "",
+        "favori_berber_id": musteri.favori_berber_id,
+    }
+# --- Veri Modeli ---
+class ProfilGuncellemeVerisi(BaseModel):
+    ad: str
+    soyad: str
+    telefon: str
+
+# --- 9. PROFİL GÜNCELLEME ---
+@router.post("/profil/guncelle")
+def profil_guncelle(
+    veriler: ProfilGuncellemeVerisi,
+    x_firebase_uid: str = Header(...),
+    db: Session = Depends(get_db)
+):
+    musteri = db.query(models.Musteri).filter(models.Musteri.firebase_uid == x_firebase_uid).first()
+    
+    if not musteri:
+        # Adamın hesabı yoksa yeni müşteri olarak kaydet
+        yeni_musteri = models.Musteri(
+            firebase_uid=x_firebase_uid,
+            ad=veriler.ad,
+            soyad=veriler.soyad,
+            telefon=veriler.telefon
+        )
+        db.add(yeni_musteri)
+        db.commit()
+        return {"mesaj": "Profil başarıyla oluşturuldu"}
+        
+    # Varsa mevcut bilgileri güncelle
+    musteri.ad = veriler.ad
+    musteri.soyad = veriler.soyad
+    musteri.telefon = veriler.telefon
+    
+    db.commit()
+    return {"mesaj": "Profil başarıyla güncellendi"}
