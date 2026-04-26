@@ -1,3 +1,5 @@
+from apscheduler.schedulers.background import BackgroundScheduler
+from utils import degerlendirme_gorevi
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -5,10 +7,17 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import models, utils
 from database import engine
 from routers import dukkan, randevular, berberler, musteriler, hizmetler, kurumsal
-from routers import degerlendirmeler, tatil, raporlar, isletmeler
+from routers import degerlendirmeler, tatil, raporlar
 
 models.Base.metadata.create_all(bind=engine)
 app = FastAPI(title="Pro Berber Kurumsal")
+
+# Zamanlayıcıyı kuruyoruz
+scheduler = BackgroundScheduler()
+# degerlendirme_gorevi fonksiyonunu her 15 dakikada bir çalışacak şekilde ayarla
+scheduler.add_job(degerlendirme_gorevi, 'interval', minutes=15)
+scheduler.start()
+
 
 # --- 6. CORS MIDDLEWARE ---
 # Flutter Web veya harici istemciler için gerekli.
@@ -61,7 +70,6 @@ app.include_router(kurumsal.router)
 app.include_router(degerlendirmeler.router)  # ✅ Yeni: Değerlendirme & Puan
 app.include_router(tatil.router)             # ✅ Yeni: Tatil Günleri
 app.include_router(raporlar.router)          # ✅ Yeni: Admin Raporlar
-app.include_router(isletmeler.router)        # ✅ Yeni: İşletme Kayıt
 
 @app.get("/")
 def home():
