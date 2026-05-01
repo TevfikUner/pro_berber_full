@@ -27,8 +27,27 @@ class _Adim2PersonelState extends State<Adim2Personel> {
 
   Future<void> _yukle() async {
     try {
-      final data = await ApiService.getBerberler();
-      if (mounted) setState(() { _berberler = data; _yukleniyor = false; });
+      final provider = context.read<RandevuProvider>();
+      final salonId = provider.salonId;
+
+      if (salonId != null) {
+        // Salon detayından berberlerini çek
+        final salonData = await ApiService.getSalonDetay(salonId);
+        final berberList = salonData['berberler'] as List<dynamic>? ?? [];
+        final berberler = berberList.map((b) => Berber(
+          id: b['id'],
+          ad: b['ad'] ?? '',
+          soyad: b['soyad'] ?? '',
+          uzmanlik: b['uzmanlik'] ?? '',
+          puan: (b['puan'] ?? 0).toDouble(),
+          fotoUrl: b['foto_url'],
+        )).toList();
+        if (mounted) setState(() { _berberler = berberler; _yukleniyor = false; });
+      } else {
+        // Fallback: tüm berberler (eski davranış)
+        final data = await ApiService.getBerberler();
+        if (mounted) setState(() { _berberler = data; _yukleniyor = false; });
+      }
     } catch (_) {
       if (mounted) setState(() => _yukleniyor = false);
     }
@@ -42,13 +61,25 @@ class _Adim2PersonelState extends State<Adim2Personel> {
       return const Center(child: CircularProgressIndicator(color: AppTheme.gold));
     }
 
+    if (_berberler == null || _berberler!.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.person_off_outlined, color: AppTheme.gold.withOpacity(0.3), size: 60),
+            const SizedBox(height: 12),
+            Text('Bu salonda berber bulunamadı', style: GoogleFonts.inter(color: AppTheme.textSecondary, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: _berberler?.length ?? 0,
+      itemCount: _berberler!.length,
       itemBuilder: (_, i) {
         final b = _berberler![i];
         final secili = provider.seciliBerber?.id == b.id;
-        // İsim ve soyismi burada birleştiriyoruz
         final tamAd = "${b.ad} ${b.soyad}";
 
         return GestureDetector(

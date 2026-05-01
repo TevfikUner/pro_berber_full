@@ -12,17 +12,22 @@ class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  State<MainScreen> createState() => MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class MainScreenState extends State<MainScreen> {
   int _seciliIndex = 0;
 
-  final List<Widget> _sayfalar = const [
-    AnaSayfaScreen(),
-    RandevularimScreen(),
-    KesfetScreen(),
-    ProfilEkrani(),
+  /// Dışarıdan sekme değişimi için (örn. Keşfet'e git)
+  void sekmeGit(int index) {
+    setState(() => _seciliIndex = index);
+  }
+
+  late final List<Widget> _sayfalar = [
+    AnaSayfaScreen(onKesfeteGit: () => sekmeGit(2)),
+    const RandevularimScreen(),
+    const KesfetScreen(),
+    const ProfilEkrani(),
   ];
 
   @override

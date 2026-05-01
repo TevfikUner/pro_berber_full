@@ -37,9 +37,11 @@ class ApiService {
     throw Exception('Dükkan bilgisi yüklenemedi');
   }
 
-  // ── İstatistik (ana sayfa) ───────────────────────────────
-  static Future<Map<String, dynamic>> getIstatistik() async {
-    final res = await http.get(Uri.parse('$_base/randevular/istatistik')).timeout(AppConfig.timeout);
+  // ── İstatistik (ana sayfa / salon bazlı) ───────────────────
+  static Future<Map<String, dynamic>> getIstatistik({int? salonId}) async {
+    String url = '$_base/randevular/istatistik';
+    if (salonId != null) url += '?salon_id=$salonId';
+    final res = await http.get(Uri.parse(url)).timeout(AppConfig.timeout);
     if (res.statusCode == 200) return json.decode(utf8.decode(res.bodyBytes));
     return {'bugunki_randevu': 0, 'musait_slot_sayisi': 0};
   }
@@ -313,13 +315,25 @@ class ApiService {
     return {'sehirler': [], 'ilceler': {}};
   }
 
-  // ── Favori Berber Güncelle ───────────────────────────────
-  static Future<void> favoriBerberGuncelle(int? berberId) async {
+  // ── Favori Berber Toggle (Çoklu Favori) ────────────────────
+  static Future<Map<String, dynamic>> favoriToggle(int berberId) async {
     final headers = await _authHeaders();
-    final params = <String, dynamic>{};
-    if (berberId != null) params['berber_id'] = berberId;
-    final url = _buildQuery('/musteriler/favori-berber', params);
-    await http.put(Uri.parse(url), headers: headers).timeout(AppConfig.timeout);
+    final url = _buildQuery('/randevular/profil/favori-toggle', {'berber_id': berberId});
+    final res = await http.post(Uri.parse(url), headers: headers).timeout(AppConfig.timeout);
+    if (res.statusCode == 200) return json.decode(utf8.decode(res.bodyBytes));
+    throw Exception('Favori güncellenemedi');
+  }
+
+  // ── Favori Berber Listesi ─────────────────────────────────
+  static Future<List<Map<String, dynamic>>> favorileriGetir() async {
+    final headers = await _authHeaders();
+    final res = await http.get(
+      Uri.parse('$_base/randevular/profil/favoriler'),
+      headers: headers,
+    ).timeout(AppConfig.timeout);
+    if (res.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(json.decode(utf8.decode(res.bodyBytes)));
+    }
+    return [];
   }
 }
-

@@ -2,12 +2,19 @@ from sqlalchemy import Column, Integer, String, Float, ForeignKey, Table, Boolea
 from sqlalchemy.orm import relationship
 from database import Base
 
-# Köprü Tablo
+# Köprü Tablolar
 randevu_hizmetleri = Table(
     "randevu_hizmetleri",
     Base.metadata,
     Column("randevu_id", Integer, ForeignKey("randevular.id"), primary_key=True),
     Column("hizmet_id", Integer, ForeignKey("hizmetler.id"), primary_key=True)
+)
+
+favori_berberler = Table(
+    "favori_berberler",
+    Base.metadata,
+    Column("musteri_id", Integer, ForeignKey("musteriler.id"), primary_key=True),
+    Column("berber_id", Integer, ForeignKey("berberler.id"), primary_key=True)
 )
 
 class Salon(Base):
@@ -57,6 +64,8 @@ class Musteri(Base):
     telefon = Column(String)
     fcm_token = Column(String, nullable=True)
     favori_berber_id = Column(Integer, ForeignKey("berberler.id"), nullable=True)
+
+    favori_berberler = relationship("Berber", secondary=favori_berberler)
 
 class Hizmet(Base):
     __tablename__ = "hizmetler"

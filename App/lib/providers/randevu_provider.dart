@@ -3,6 +3,14 @@ import '../models/hizmet.dart';
 import '../models/berber.dart';
 
 class RandevuProvider extends ChangeNotifier {
+  // ── Salon ID (çoklu salon desteği) ─────────────────────────
+  int? salonId;
+
+  void salonSec(int id) {
+    salonId = id;
+    notifyListeners();
+  }
+
   // ── Adım 1: Hizmetler ─────────────────────────────────────
   final List<Hizmet> seciliHizmetler = [];
 
@@ -47,6 +55,7 @@ class RandevuProvider extends ChangeNotifier {
 
   // ── Son onaydan sonra sıfırla ─────────────────────────────
   void reset() {
+    salonId = null;
     seciliHizmetler.clear();
     seciliBerber = null;
     seciliTarih = null;

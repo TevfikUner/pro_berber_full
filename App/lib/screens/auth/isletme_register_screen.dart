@@ -269,20 +269,6 @@ class _IsletmeRegisterScreenState extends State<IsletmeRegisterScreen> {
                       onPressed: _kayitOl,
                       loading: _loading,
                     ),
-                    const SizedBox(height: 16),
-
-                    // Bilgilendirme
-                    Center(
-                      child: Text(
-                        'Başvurunuz incelendikten sonra\nhesabınız aktifleştirilecektir.',
-                        textAlign: TextAlign.center,
-                        style: GoogleFonts.inter(
-                          color: AppTheme.textSecondary.withOpacity(0.6),
-                          fontSize: 12,
-                          height: 1.5,
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),

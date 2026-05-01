@@ -68,7 +68,7 @@ class _BerberAppState extends State<BerberApp> {
         ChangeNotifierProvider(create: (_) => RandevuProvider()),
       ],
       child: MaterialApp(
-        title: 'Pro Berber',
+        title: 'Premium Berber',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.theme,
         navigatorKey: navigatorKey,

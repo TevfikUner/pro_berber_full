@@ -45,15 +45,20 @@ def musait_takvim_getir(
 
 # --- 1b. ANA SAYFA İSTATİSTİK ---
 @router.get("/istatistik")
-def istatistik_getir(db: Session = Depends(get_db)):
+def istatistik_getir(salon_id: int = None, db: Session = Depends(get_db)):
     import datetime as _dt
 
     # 1. Bugünün tarihi
     simdi = _dt.datetime.now()
     bugun_str = simdi.strftime("%Y-%m-%d")
 
-    # 2. Dinamik berber sayısı
-    berber_sayisi = db.query(models.Berber).count()
+    # 2. Dinamik berber sayısı (salon bazlı veya genel)
+    berber_sorgu = db.query(models.Berber)
+    if salon_id:
+        berber_sorgu = berber_sorgu.filter(models.Berber.salon_id == salon_id)
+    berber_sayisi = berber_sorgu.count()
+    berber_idleri = [b.id for b in berber_sorgu.all()]
+    
     if berber_sayisi == 0:
         return {"bugunku_randevu": 0, "musait_slot_sayisi": 0, "toplam_slot": 0, "aktif_berber": 0}
 
@@ -64,34 +69,52 @@ def istatistik_getir(db: Session = Depends(get_db)):
     if bugun_tatil:
         return {"bugunku_randevu": 0, "musait_slot_sayisi": 0, "toplam_slot": 0, "aktif_berber": berber_sayisi}
 
-    # 4. Toplam kapasite — 30dk slotlar (dolu_slot ile aynı birim!)
-    # Hafta içi (0-5): 10:00–22:00 = 12 saat = 24 slot/berber
-    # Pazar    (6)   : 10:00–17:00 =  7 saat = 14 slot/berber
+    # 4. Toplam kapasite — 30dk slotlar
     gun_index = simdi.weekday()
-    mesai_saati = 7 if gun_index == 6 else 12
-    slot_per_berber = mesai_saati * 2          # 30dk birim: 12 saat → 24 slot
+    
+    # Salon bazlı açılış/kapanış saatleri
+    if salon_id:
+        salon = db.query(models.Salon).filter(models.Salon.id == salon_id).first()
+        if salon and salon.acilis_saati and salon.kapanis_saati:
+            try:
+                acilis = int(salon.acilis_saati.split(":")[0])
+                kapanis = int(salon.kapanis_saati.split(":")[0])
+                mesai_saati = max(0, kapanis - acilis)
+                if gun_index == 6:  # Pazar
+                    mesai_saati = 0  # Kapalı
+            except:
+                mesai_saati = 7 if gun_index == 6 else 12
+        else:
+            mesai_saati = 7 if gun_index == 6 else 12
+    else:
+        mesai_saati = 7 if gun_index == 6 else 12
+    
+    slot_per_berber = mesai_saati * 2
     toplam_slot = berber_sayisi * slot_per_berber
 
-    # 5. Bugünkü onaylı randevuları çek
-    bugunki_randevular = db.query(models.Randevu).filter(
+    # 5. Bugünkü onaylı randevuları çek (salon bazlı filtreleme)
+    randevu_sorgu = db.query(models.Randevu).filter(
         models.Randevu.tarih == bugun_str,
         models.Randevu.durum == "onaylandi"
-    ).all()
+    )
+    if salon_id and berber_idleri:
+        randevu_sorgu = randevu_sorgu.filter(models.Randevu.berber_id.in_(berber_idleri))
+    
+    bugunki_randevular = randevu_sorgu.all()
 
-    # 6. Dolu slot sayısını hesapla (30dk birim — toplam_slot ile eşleşiyor)
-    # 3 saatlik hizmet = 180dk → ceil(180/30) = 6 slot kaplar
+    # 6. Dolu slot sayısını hesapla
     dolu_slot_sayisi = 0
     for r in bugunki_randevular:
         sure = sum(h.sure for h in r.hizmetler) if r.hizmetler else 30
         if sure == 0:
             sure = 30
-        dolu_slot_sayisi += math.ceil(sure / 30)  # 30dk birim
+        dolu_slot_sayisi += math.ceil(sure / 30)
 
     # 7. Sonuçları dön
     return {
-        "bugunku_randevu": len(bugunki_randevular),                          # Gerçek randevu adedi
-        "musait_slot_sayisi": max(0, toplam_slot - dolu_slot_sayisi),        # Boş 30dk slotlar
-        "toplam_slot": toplam_slot,                                          # Toplam 30dk slotlar
+        "bugunku_randevu": len(bugunki_randevular),
+        "musait_slot_sayisi": max(0, toplam_slot - dolu_slot_sayisi),
+        "toplam_slot": toplam_slot,
         "aktif_berber": berber_sayisi
     }
 
@@ -306,18 +329,41 @@ def durum_guncelle(
 # --- 4. MÜŞTERİ PANELİ ---
 @router.get("/benim-randevularim")
 def benim_randevularim(x_firebase_uid: str = Header(...), db: Session = Depends(get_db)):
+    from datetime import datetime, timedelta
     musteri = db.query(models.Musteri).filter(models.Musteri.firebase_uid == x_firebase_uid).first()
     if not musteri: raise HTTPException(404, "Müşteri bulunamadı.")
     
     randevular = db.query(models.Randevu).filter(models.Randevu.musteri_id == musteri.id).all()
+    
+    # Geçmiş tarihli "onaylandi" randevuları otomatik "tamamlandi" yap
+    simdi = datetime.now()
+    degisen = False
+    for r in randevular:
+        if r.durum == "onaylandi":
+            try:
+                randevu_zamani = datetime.strptime(f"{r.tarih} {r.saat}", "%Y-%m-%d %H:%M")
+                toplam_sure = sum(h.sure for h in r.hizmetler) if r.hizmetler else 30
+                randevu_bitis = randevu_zamani + timedelta(minutes=toplam_sure)
+                if randevu_bitis < simdi:
+                    r.durum = "tamamlandi"
+                    degisen = True
+            except:
+                pass
+    if degisen:
+        db.commit()
+    
     return [{
         "id": r.id,
+        "berber_id": r.berber_id,
         "berber": f"{r.berber.ad} {r.berber.soyad}",
+        "salon_ad": r.salon.ad if r.salon else "Bilinmiyor",
         "hizmetler": [h.ad for h in r.hizmetler],
         "tarih": r.tarih,
         "saat": r.saat,
         "durum": r.durum,
-        "toplam_fiyat": r.toplam_fiyat # Mühürlü fiyatı dönüyoruz
+        "toplam_fiyat": r.toplam_fiyat,
+        "puan": r.puan,
+        "yorum": r.yorum,
     } for r in randevular]
 
 # --- 5. BERBER PANELİ ---
@@ -510,3 +556,51 @@ def profil_guncelle(
     
     db.commit()
     return {"mesaj": "Profil başarıyla güncellendi"}
+
+# --- 10. FAVORİ BERBER TOGGLE (Çoklu Favori) ---
+@router.post("/profil/favori-toggle")
+def favori_toggle(
+    berber_id: int,
+    x_firebase_uid: str = Header(...),
+    db: Session = Depends(get_db)
+):
+    musteri = db.query(models.Musteri).filter(
+        models.Musteri.firebase_uid == x_firebase_uid
+    ).first()
+    if not musteri:
+        raise HTTPException(status_code=404, detail="Müşteri bulunamadı.")
+    
+    berber = db.query(models.Berber).filter(models.Berber.id == berber_id).first()
+    if not berber:
+        raise HTTPException(status_code=404, detail="Berber bulunamadı.")
+    
+    if berber in musteri.favori_berberler:
+        musteri.favori_berberler.remove(berber)
+        db.commit()
+        return {"mesaj": f"{berber.ad} {berber.soyad} favorilerden çıkarıldı.", "favori": False}
+    else:
+        musteri.favori_berberler.append(berber)
+        db.commit()
+        return {"mesaj": f"{berber.ad} {berber.soyad} favorilere eklendi!", "favori": True}
+
+# --- 11. FAVORİ BERBER LİSTESİ ---
+@router.get("/profil/favoriler")
+def favori_listele(
+    x_firebase_uid: str = Header(...),
+    db: Session = Depends(get_db)
+):
+    musteri = db.query(models.Musteri).filter(
+        models.Musteri.firebase_uid == x_firebase_uid
+    ).first()
+    if not musteri:
+        raise HTTPException(status_code=404, detail="Müşteri bulunamadı.")
+    
+    return [{
+        "berber_id": b.id,
+        "berber_ad": f"{b.ad} {b.soyad}",
+        "salon_id": b.salon_id,
+        "salon_ad": b.salon.ad if b.salon else "Bilinmiyor",
+        "uzmanlik": b.uzmanlik,
+        "puan": b.puan,
+        "foto_url": b.foto_url,
+    } for b in musteri.favori_berberler]

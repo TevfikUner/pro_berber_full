@@ -296,6 +296,15 @@ class _RandevularimScreenState extends State<RandevularimScreen> with SingleTick
                           style: GoogleFonts.inter(color: AppTheme.textSecondary, fontSize: 13)),
                     ),
                   ]),
+                  if (r.salonAd.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Row(children: [
+                      const Icon(Icons.store_outlined, color: AppTheme.gold, size: 16),
+                      const SizedBox(width: 8),
+                      Text(r.salonAd,
+                          style: GoogleFonts.inter(color: AppTheme.gold, fontSize: 13, fontWeight: FontWeight.w500)),
+                    ]),
+                  ],
 
                   // ─── AKILLI BUTONLAR ───
                   if (r.durum == 'onaylandi') ...[

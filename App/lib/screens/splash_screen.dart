@@ -90,7 +90,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: 24),
                     Text(
-                      'PRO BERBER',
+                      'Premium Berber',
                       style: GoogleFonts.playfairDisplay(
                         color: AppTheme.gold,
                         fontSize: 32,
@@ -100,7 +100,7 @@ class _SplashScreenState extends State<SplashScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Kurumsal Berber Hizmetleri',
+                      'Premium Berber Hizmetleri',
                       style: GoogleFonts.inter(
                         color: AppTheme.textSecondary,
                         fontSize: 14,

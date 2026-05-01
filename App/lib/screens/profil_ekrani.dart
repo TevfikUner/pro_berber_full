@@ -1,10 +1,15 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../theme/app_theme.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'auth/role_selection_screen.dart';
+import 'profil/yardim_destek_screen.dart';
+import 'profil/yasal_dokuman_screen.dart';
 
 class ProfilEkrani extends StatefulWidget {
   const ProfilEkrani({super.key});
@@ -19,6 +24,7 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
   final TextEditingController telefonKontrolcusu = TextEditingController();
   bool yukleniyor = false;
   bool _duzenlemeModu = false;
+  File? _profilFoto;
 
   @override
   void initState() {
@@ -26,11 +32,69 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
     _bilgileriGetir();
   }
 
-  // Tarayıcıda link açan yardımcı fonksiyon
-  Future<void> _linkeGit(String url) async {
-    final Uri uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      print('Link açılamadı: $url');
+  Future<void> _fotoSec() async {
+    final secim = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.textSecondary.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text('Profil Fotoğrafı',
+                  style: GoogleFonts.playfairDisplay(
+                      color: AppTheme.gold, fontSize: 20, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.gold.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.camera_alt, color: AppTheme.gold),
+                ),
+                title: Text('Fotoğraf Çek', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
+                subtitle: Text('Kameranı kullan', style: GoogleFonts.inter(color: AppTheme.textSecondary, fontSize: 12)),
+                onTap: () => Navigator.pop(ctx, ImageSource.camera),
+              ),
+              const SizedBox(height: 8),
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.gold.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.photo_library, color: AppTheme.gold),
+                ),
+                title: Text('Galeriden Seç', style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600)),
+                subtitle: Text('Galerine göz at', style: GoogleFonts.inter(color: AppTheme.textSecondary, fontSize: 12)),
+                onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (secim == null) return;
+    final picker = ImagePicker();
+    final img = await picker.pickImage(source: secim, maxWidth: 512, imageQuality: 80);
+    if (img != null && mounted) {
+      setState(() => _profilFoto = File(img.path));
     }
   }
 
@@ -57,20 +121,15 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
     try {
       String gidenTel = telefonKontrolcusu.text.trim();
       if (gidenTel.isNotEmpty) gidenTel = '0$gidenTel';
-
       await ApiService.profilGuncelle(
         ad: adKontrolcusu.text.trim(),
         soyad: soyadKontrolcusu.text.trim(),
         telefon: gidenTel,
       );
-
       if (mounted) {
         setState(() => _duzenlemeModu = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bilgileriniz başarıyla kaydedildi!'),
-            backgroundColor: AppTheme.success,
-          ),
+          const SnackBar(content: Text('Bilgileriniz başarıyla kaydedildi!'), backgroundColor: AppTheme.success),
         );
       }
     } catch (e) {
@@ -84,6 +143,14 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
     }
   }
 
+  void _uygulamaPaylas() {
+    const link = 'https://play.google.com/store/apps/details?id=com.premiumbarber.app';
+    Share.share(
+      'Premium Berber uygulamasını dene! Hızlıca berber randevusu al. 💈✂️\n$link',
+      subject: 'Premium Berber Uygulaması',
+    );
+  }
+
   Future<void> _cikisYap() async {
     final onay = await showDialog<bool>(
       context: context,
@@ -91,33 +158,26 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Text('Çıkış Yap',
-            style: GoogleFonts.playfairDisplay(
-                color: AppTheme.gold, fontWeight: FontWeight.bold)),
-        content: const Text(
-          'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
-          style: TextStyle(color: Colors.white),
-        ),
+            style: GoogleFonts.playfairDisplay(color: AppTheme.gold, fontWeight: FontWeight.bold)),
+        content: const Text('Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+            style: TextStyle(color: Colors.white)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Vazgeç',
-                style: TextStyle(color: AppTheme.textSecondary)),
+            child: const Text('Vazgeç', style: TextStyle(color: AppTheme.textSecondary)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.gold,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
             onPressed: () => Navigator.pop(ctx, true),
             child: Text('Çıkış Yap',
-                style: GoogleFonts.inter(
-                    color: AppTheme.black, fontWeight: FontWeight.bold)),
+                style: GoogleFonts.inter(color: AppTheme.black, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
     );
-
     if (onay == true) {
       await AuthService.cikisYap();
       if (mounted) {
@@ -135,28 +195,20 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Hesabı Sil',
-            style: GoogleFonts.playfairDisplay(color: AppTheme.error)),
+        title: Text('Hesabı Sil', style: GoogleFonts.playfairDisplay(color: AppTheme.error)),
         content: const Text(
           'Hesabınızı ve tüm randevu geçmişinizi kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.',
           style: TextStyle(color: Colors.white),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Vazgeç',
-                style: TextStyle(color: AppTheme.textSecondary)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Kalıcı Olarak Sil',
-                style: TextStyle(
-                    color: AppTheme.error, fontWeight: FontWeight.bold)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Vazgeç', style: TextStyle(color: AppTheme.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Kalıcı Olarak Sil',
+                  style: TextStyle(color: AppTheme.error, fontWeight: FontWeight.bold))),
         ],
       ),
     );
-
     if (onay == true) {
       // Hesap silme işlemi buraya gelecek
     }
@@ -172,34 +224,51 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
         centerTitle: true,
         automaticallyImplyLeading: false,
         title: Text('Profil',
-            style: GoogleFonts.playfairDisplay(
-                color: AppTheme.gold, fontSize: 22, fontWeight: FontWeight.bold)),
+            style: GoogleFonts.playfairDisplay(color: AppTheme.gold, fontSize: 22, fontWeight: FontWeight.bold)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
         child: Column(
           children: [
-            // ── Profil Avatarı ──────────────────────────
-            Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppTheme.surface,
-                border:
-                    Border.all(color: AppTheme.gold.withOpacity(0.3), width: 2),
+            // ── Profil Avatarı (fotoğraf yükleme) ────────
+            GestureDetector(
+              onTap: _fotoSec,
+              child: Stack(
+                children: [
+                  Container(
+                    width: 100, height: 100,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppTheme.surface,
+                      border: Border.all(color: AppTheme.gold.withOpacity(0.3), width: 2),
+                      image: _profilFoto != null
+                          ? DecorationImage(image: FileImage(_profilFoto!), fit: BoxFit.cover)
+                          : null,
+                    ),
+                    child: _profilFoto == null
+                        ? const Icon(Icons.person, color: AppTheme.gold, size: 50)
+                        : null,
+                  ),
+                  Positioned(
+                    bottom: 0, right: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: AppTheme.gold,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppTheme.black, width: 2),
+                      ),
+                      child: const Icon(Icons.camera_alt, color: AppTheme.black, size: 16),
+                    ),
+                  ),
+                ],
               ),
-              child:
-                  const Icon(Icons.person, color: AppTheme.gold, size: 56),
             ),
             const SizedBox(height: 8),
             if (adKontrolcusu.text.isNotEmpty || soyadKontrolcusu.text.isNotEmpty)
               Text(
                 '${adKontrolcusu.text} ${soyadKontrolcusu.text}',
-                style: GoogleFonts.playfairDisplay(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
               ),
             const SizedBox(height: 24),
 
@@ -209,75 +278,56 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
               icon: Icons.person_outline,
               trailing: TextButton(
                 onPressed: () {
-                  if (_duzenlemeModu) {
-                    _bilgileriKaydet();
-                  } else {
-                    setState(() => _duzenlemeModu = true);
-                  }
+                  if (_duzenlemeModu) { _bilgileriKaydet(); } else { setState(() => _duzenlemeModu = true); }
                 },
-                child: Text(
-                  _duzenlemeModu ? 'Kaydet' : 'Düzenle',
-                  style: GoogleFonts.inter(
-                    color: AppTheme.gold,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
+                child: Text(_duzenlemeModu ? 'Kaydet' : 'Düzenle',
+                    style: GoogleFonts.inter(color: AppTheme.gold, fontWeight: FontWeight.w600, fontSize: 13)),
               ),
               child: Column(
                 children: [
-                  _ProfilGirdisi(
-                    baslik: 'Adınız',
-                    kontrolcu: adKontrolcusu,
-                    ikon: Icons.badge_outlined,
-                    enabled: _duzenlemeModu,
-                  ),
+                  _ProfilGirdisi(baslik: 'Adınız', kontrolcu: adKontrolcusu, ikon: Icons.badge_outlined, enabled: _duzenlemeModu),
                   const SizedBox(height: 12),
-                  _ProfilGirdisi(
-                    baslik: 'Soyadınız',
-                    kontrolcu: soyadKontrolcusu,
-                    ikon: Icons.badge_outlined,
-                    enabled: _duzenlemeModu,
-                  ),
+                  _ProfilGirdisi(baslik: 'Soyadınız', kontrolcu: soyadKontrolcusu, ikon: Icons.badge_outlined, enabled: _duzenlemeModu),
                   const SizedBox(height: 12),
-                  _ProfilGirdisi(
-                    baslik: 'Telefon',
-                    kontrolcu: telefonKontrolcusu,
-                    ikon: Icons.phone_outlined,
-                    klavyeTipi: TextInputType.phone,
-                    enabled: _duzenlemeModu,
-                  ),
+                  _ProfilGirdisi(baslik: 'Telefon', kontrolcu: telefonKontrolcusu, ikon: Icons.phone_outlined, klavyeTipi: TextInputType.phone, enabled: _duzenlemeModu),
                 ],
               ),
             ),
             const SizedBox(height: 16),
 
-            // ── Yasal & Gizlilik ────────────────────────
+            // ── Yasal & Gizlilik (in-app WebView) ───────
             _SectionCard(
               title: 'Yasal & Gizlilik',
               icon: Icons.shield_outlined,
               child: Column(
                 children: [
-                  _MenuSatir(
-                    icon: Icons.privacy_tip_outlined,
-                    label: 'Gizlilik Politikası',
-                    onTap: () => _linkeGit(
-                        'https://docs.google.com/document/d/1J7rxdVU_4laHvegjVdZd-4XNQrlLm8InNt-f70BhhiY/edit?usp=sharing'),
-                  ),
+                  _MenuSatir(icon: Icons.privacy_tip_outlined, label: 'Gizlilik Politikası',
+                      onTap: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => const YasalDokumanScreen(baslik: 'Gizlilik Politikası', icerik: YasalDokumanScreen.gizlilikPolitikasi)))),
                   _MenuDivider(),
-                  _MenuSatir(
-                    icon: Icons.article_outlined,
-                    label: 'KVKK Aydınlatma Metni',
-                    onTap: () => _linkeGit(
-                        'https://docs.google.com/document/d/1J7rxdVU_4laHvegjVdZd-4XNQrlLm8InNt-f70BhhiY/edit?usp=sharing'),
-                  ),
+                  _MenuSatir(icon: Icons.article_outlined, label: 'KVKK Aydınlatma Metni',
+                      onTap: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => const YasalDokumanScreen(baslik: 'KVKK Aydınlatma Metni', icerik: YasalDokumanScreen.kvkkMetni)))),
                   _MenuDivider(),
-                  _MenuSatir(
-                    icon: Icons.description_outlined,
-                    label: 'Kullanım Koşulları',
-                    onTap: () => _linkeGit(
-                        'https://docs.google.com/document/d/1J7rxdVU_4laHvegjVdZd-4XNQrlLm8InNt-f70BhhiY/edit?usp=sharing'),
-                  ),
+                  _MenuSatir(icon: Icons.description_outlined, label: 'Kullanım Koşulları',
+                      onTap: () => Navigator.push(context, MaterialPageRoute(
+                        builder: (_) => const YasalDokumanScreen(baslik: 'Kullanım Koşulları', icerik: YasalDokumanScreen.kullanimKosullari)))),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // ── Yardım & Destek ─────────────────────────
+            _SectionCard(
+              title: 'Yardım & Destek',
+              icon: Icons.support_agent_outlined,
+              child: Column(
+                children: [
+                  _MenuSatir(icon: Icons.help_outline, label: 'Sıkça Sorulan Sorular',
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const YardimDestekScreen()))),
+                  _MenuDivider(),
+                  _MenuSatir(icon: Icons.mail_outline, label: 'Bize Ulaşın',
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const YardimDestekScreen()))),
                 ],
               ),
             ),
@@ -289,23 +339,22 @@ class _ProfilEkraniState extends State<ProfilEkrani> {
               icon: Icons.settings_outlined,
               child: Column(
                 children: [
-                  // Çıkış Yap
+                  // Uygulamayı Paylaş
                   _MenuSatir(
-                    icon: Icons.logout,
-                    label: 'Çıkış Yap',
+                    icon: Icons.share_outlined,
+                    label: 'Uygulamayı Paylaş',
                     iconColor: AppTheme.gold,
                     labelColor: AppTheme.gold,
-                    onTap: _cikisYap,
+                    onTap: _uygulamaPaylas,
                   ),
                   _MenuDivider(),
+                  // Çıkış Yap
+                  _MenuSatir(icon: Icons.logout, label: 'Çıkış Yap',
+                      iconColor: AppTheme.gold, labelColor: AppTheme.gold, onTap: _cikisYap),
+                  _MenuDivider(),
                   // Hesap Sil
-                  _MenuSatir(
-                    icon: Icons.delete_forever,
-                    label: 'Hesabımı Sil',
-                    iconColor: AppTheme.error,
-                    labelColor: AppTheme.error,
-                    onTap: _hesapSilmeOnayi,
-                  ),
+                  _MenuSatir(icon: Icons.delete_forever, label: 'Hesabımı Sil',
+                      iconColor: AppTheme.error, labelColor: AppTheme.error, onTap: _hesapSilmeOnayi),
                 ],
               ),
             ),
@@ -326,12 +375,7 @@ class _SectionCard extends StatelessWidget {
   final Widget child;
   final Widget? trailing;
 
-  const _SectionCard({
-    required this.title,
-    required this.icon,
-    required this.child,
-    this.trailing,
-  });
+  const _SectionCard({required this.title, required this.icon, required this.child, this.trailing});
 
   @override
   Widget build(BuildContext context) {
@@ -350,14 +394,7 @@ class _SectionCard extends StatelessWidget {
             children: [
               Icon(icon, color: AppTheme.gold, size: 18),
               const SizedBox(width: 8),
-              Text(
-                title,
-                style: GoogleFonts.playfairDisplay(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              Text(title, style: GoogleFonts.playfairDisplay(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
               const Spacer(),
               if (trailing != null) trailing!,
             ],
@@ -377,13 +414,7 @@ class _MenuSatir extends StatelessWidget {
   final Color? iconColor;
   final Color? labelColor;
 
-  const _MenuSatir({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.iconColor,
-    this.labelColor,
-  });
+  const _MenuSatir({required this.icon, required this.label, required this.onTap, this.iconColor, this.labelColor});
 
   @override
   Widget build(BuildContext context) {
@@ -396,17 +427,8 @@ class _MenuSatir extends StatelessWidget {
           children: [
             Icon(icon, color: iconColor ?? AppTheme.textSecondary, size: 20),
             const SizedBox(width: 14),
-            Expanded(
-              child: Text(
-                label,
-                style: GoogleFonts.inter(
-                  color: labelColor ?? Colors.white,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-            Icon(Icons.arrow_forward_ios,
-                color: AppTheme.textSecondary.withOpacity(0.4), size: 14),
+            Expanded(child: Text(label, style: GoogleFonts.inter(color: labelColor ?? Colors.white, fontSize: 14))),
+            Icon(Icons.arrow_forward_ios, color: AppTheme.textSecondary.withOpacity(0.4), size: 14),
           ],
         ),
       ),
@@ -417,10 +439,7 @@ class _MenuSatir extends StatelessWidget {
 class _MenuDivider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Divider(
-      color: AppTheme.gold.withOpacity(0.06),
-      height: 1,
-    );
+    return Divider(color: AppTheme.gold.withOpacity(0.06), height: 1);
   }
 }
 
@@ -431,13 +450,7 @@ class _ProfilGirdisi extends StatelessWidget {
   final TextInputType klavyeTipi;
   final bool enabled;
 
-  const _ProfilGirdisi({
-    required this.baslik,
-    required this.kontrolcu,
-    required this.ikon,
-    this.klavyeTipi = TextInputType.text,
-    this.enabled = true,
-  });
+  const _ProfilGirdisi({required this.baslik, required this.kontrolcu, required this.ikon, this.klavyeTipi = TextInputType.text, this.enabled = true});
 
   @override
   Widget build(BuildContext context) {
@@ -445,27 +458,16 @@ class _ProfilGirdisi extends StatelessWidget {
       controller: kontrolcu,
       keyboardType: klavyeTipi,
       enabled: enabled,
-      style: TextStyle(
-        color: enabled ? Colors.white : AppTheme.textSecondary,
-      ),
+      style: TextStyle(color: enabled ? Colors.white : AppTheme.textSecondary),
       decoration: InputDecoration(
         labelText: baslik,
         labelStyle: TextStyle(color: AppTheme.textSecondary.withOpacity(0.7)),
         prefixIcon: Icon(ikon, color: AppTheme.gold.withOpacity(0.7)),
         filled: true,
         fillColor: enabled ? AppTheme.black : AppTheme.surface,
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: AppTheme.gold.withOpacity(0.15)),
-        ),
-        disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: AppTheme.gold.withOpacity(0.05)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppTheme.gold),
-        ),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: AppTheme.gold.withOpacity(0.15))),
+        disabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide(color: AppTheme.gold.withOpacity(0.05))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: AppTheme.gold)),
       ),
     );
   }

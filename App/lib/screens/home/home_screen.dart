@@ -296,12 +296,14 @@ class _StatKart extends StatelessWidget {
   final IconData icon;
   final Color valueColor;
 
-  const _StatKart(
-      {required this.label,
-      required this.value,
-      required this.icon,
-      this.valueColor = AppTheme.gold});
-
+  const _StatKart({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.valueColor = Colors.white, // İŞTE EKSİK OLAN PARÇA BU!
+  });
+  
   @override
   Widget build(BuildContext context) {
     return Container(

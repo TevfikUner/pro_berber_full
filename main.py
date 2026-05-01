@@ -10,7 +10,7 @@ from routers import dukkan, randevular, berberler, musteriler, hizmetler, kurums
 from routers import degerlendirmeler, tatil, raporlar
 
 models.Base.metadata.create_all(bind=engine)
-app = FastAPI(title="Pro Berber Kurumsal")
+app = FastAPI(title="Premium Berber")
 
 # Zamanlayıcıyı kuruyoruz
 scheduler = BackgroundScheduler()
