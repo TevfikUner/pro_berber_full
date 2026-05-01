@@ -22,11 +22,16 @@ class _Adim2PersonelState extends State<Adim2Personel> {
   @override
   void initState() {
     super.initState();
-    ApiService.getBerberler().then((data) {
+    _yukle();
+  }
+
+  Future<void> _yukle() async {
+    try {
+      final data = await ApiService.getBerberler();
       if (mounted) setState(() { _berberler = data; _yukleniyor = false; });
-    }).catchError((_) {
+    } catch (_) {
       if (mounted) setState(() => _yukleniyor = false);
-    });
+    }
   }
 
   @override
@@ -43,6 +48,8 @@ class _Adim2PersonelState extends State<Adim2Personel> {
       itemBuilder: (_, i) {
         final b = _berberler![i];
         final secili = provider.seciliBerber?.id == b.id;
+        // İsim ve soyismi burada birleştiriyoruz
+        final tamAd = "${b.ad} ${b.soyad}";
 
         return GestureDetector(
           onTap: () => provider.berberSec(b),
@@ -60,7 +67,6 @@ class _Adim2PersonelState extends State<Adim2Personel> {
             ),
             child: Row(
               children: [
-                // Fotoğraf
                 Stack(
                   children: [
                     CircleAvatar(
@@ -69,10 +75,9 @@ class _Adim2PersonelState extends State<Adim2Personel> {
                       child: b.fotoUrl != null
                           ? ClipOval(
                               child: CachedNetworkImage(
-                                imageUrl: '${AppConfig.baseUrl}${b.fotoUrl}',
+                                imageUrl: b.fotoUrl!.startsWith('http') ? b.fotoUrl! : '${AppConfig.baseUrl}${b.fotoUrl}',
                                 width: 60, height: 60, fit: BoxFit.cover,
-                                errorWidget: (_, __, ___) => const Icon(
-                                    Icons.person, color: AppTheme.gold, size: 32),
+                                errorWidget: (_, __, ___) => const Icon(Icons.person, color: AppTheme.gold, size: 32),
                               ),
                             )
                           : const Icon(Icons.person, color: AppTheme.gold, size: 32),
@@ -82,24 +87,19 @@ class _Adim2PersonelState extends State<Adim2Personel> {
                         right: 0, bottom: 0,
                         child: Container(
                           width: 20, height: 20,
-                          decoration: const BoxDecoration(
-                              color: AppTheme.gold, shape: BoxShape.circle),
+                          decoration: const BoxDecoration(color: AppTheme.gold, shape: BoxShape.circle),
                           child: const Icon(Icons.check, color: AppTheme.black, size: 13),
                         ),
                       ),
                   ],
                 ),
                 const SizedBox(width: 16),
-                // Bilgi
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(b.adSoyad,
-                          style: GoogleFonts.inter(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 16)),
+                      Text(tamAd,
+                          style: GoogleFonts.inter(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 16)),
                       const SizedBox(height: 4),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -108,22 +108,15 @@ class _Adim2PersonelState extends State<Adim2Personel> {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(b.uzmanlik,
-                            style: GoogleFonts.inter(
-                                color: AppTheme.gold,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w500)),
+                            style: GoogleFonts.inter(color: AppTheme.gold, fontSize: 11, fontWeight: FontWeight.w500)),
                       ),
                     ],
                   ),
                 ),
-                // Puan
                 Column(children: [
                   const Icon(Icons.star, color: AppTheme.gold, size: 18),
                   Text(b.puan.toStringAsFixed(1),
-                      style: GoogleFonts.inter(
-                          color: AppTheme.gold,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14)),
+                      style: GoogleFonts.inter(color: AppTheme.gold, fontWeight: FontWeight.bold, fontSize: 14)),
                 ]),
               ],
             ),

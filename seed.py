@@ -1,10 +1,10 @@
-# seed.py - Veritabani baslangic verileriyle doldurur (Pazaryeri Modeli)
+# seed.py - Veritabani baslangic verileriyle doldurur (Pazaryeri Modeli + Sosyal Medya)
 import sys
 sys.stdout.reconfigure(encoding='utf-8')
 from database import SessionLocal, engine
 import models
 
-# Tabloları oluştur (Özellikle yeni eklenen salonlar tablosu için)
+# Tabloları oluştur (Yeni eklenen sütunlar dahil)
 models.Base.metadata.create_all(bind=engine)
 db = SessionLocal()
 
@@ -16,7 +16,7 @@ db.query(models.Dukkan).delete()
 db.commit()
 
 # ─────────────────────────────────────────────
-# 1. SALON OLUŞTURMA (Yeni Sistemin Temeli)
+# 1. SALON OLUŞTURMA
 # ─────────────────────────────────────────────
 yeni_salon = models.Salon(
     ad="Premium Berber Center",
@@ -32,23 +32,17 @@ yeni_salon = models.Salon(
 db.add(yeni_salon)
 db.commit()
 db.refresh(yeni_salon)
-print(f"[OK] Salon oluşturuldu: {yeni_salon.ad} (ID: {yeni_salon.id})")
+print(f"[OK] Salon oluşturuldu: {yeni_salon.ad}")
 
 # ─────────────────────────────────────────────
-# 2. HİZMETLER (Senin listen)
+# 2. HİZMETLER
 # ─────────────────────────────────────────────
 hizmetler = [
-    models.Hizmet(ad="Saç Kesimi", fiyat=300, sure=30, aciklama="Klasik veya modern saç kesimi. Yıkama dahil değil."),
-    models.Hizmet(ad="Sakal Tıraşı (Makineli / Usturalı)", fiyat=150, sure=15, aciklama="Makineli veya ustura ile hassas sakal şekillendirme."),
-    models.Hizmet(ad="Saç & Sakal Kesimi (Yıkama Dahil)", fiyat=450, sure=45, aciklama="Saç kesimi + sakal düzeltme + saç yıkama. Tek seferde tam bakim."),
-    models.Hizmet(ad="Çocuk Tıraşı (13 Yaş Altı)", fiyat=200, sure=20, aciklama="13 yaş altı çocuklar için özel fiyatlı tıraş hizmeti."),
-    models.Hizmet(ad="Sadece yıkama ve şekillendirme (Fon)", fiyat=100, sure=15, aciklama="Saç yıkama + fon + şekillendirme. Kesim yapılmaz."),
-    models.Hizmet(ad="Detayli Cilt Bakimi (Siyah Maske + Peeling)", fiyat=200, sure=20, aciklama="Gözenek temizleyici siyah maske ve peeling uygulaması."),
-    models.Hizmet(ad="Ağda İşlemleri (Kulak / Yanak / Burun)", fiyat=100, sure=15, aciklama="Kulak, yanak ve burun bölgesi ağda uygulaması."),
-    models.Hizmet(ad="Keratin Bakimi (Saç Düzlestirme ve Besleme)", fiyat=500, sure=60, aciklama="Saçı besleyen ve düzleştiren profesyonel keratin uygulaması."),
-    models.Hizmet(ad="Saç Boyama / Beyaz Kapatma", fiyat=500, sure=60, aciklama="Beyaz kapatma veya tam saç boyama hizmeti."),
-    models.Hizmet(ad="Kaş Tasarımı / Düzeltme", fiyat=100, sure=15, aciklama="Kaşları sekillendirme ve düzeltme."),
-    models.Hizmet(ad="Damat Tıraşı (Full VIP Paket)", fiyat=1500, sure=120, aciklama="Saç + Sakal + Detayli Cilt Bakimi + Ağda + Keratin + Maske + Fon ve Özel şekillendirme.")
+    models.Hizmet(ad="Saç Kesimi", fiyat=300, sure=30, aciklama="Klasik veya modern saç kesimi."),
+    models.Hizmet(ad="Sakal Tıraşı", fiyat=150, sure=15, aciklama="Makineli veya ustura ile şekillendirme."),
+    models.Hizmet(ad="Saç & Sakal Kesimi", fiyat=450, sure=45, aciklama="Komple bakım paketi."),
+    models.Hizmet(ad="Çocuk Tıraşı", fiyat=200, sure=20, aciklama="13 yaş altı çocuklar için."),
+    models.Hizmet(ad="Damat Tıraşı (Full VIP)", fiyat=1500, sure=120, aciklama="Düğün öncesi full bakım.")
 ]
 
 db.add_all(hizmetler)
@@ -56,20 +50,53 @@ db.commit()
 print(f"[OK] {len(hizmetler)} hizmet eklendi.")
 
 # ─────────────────────────────────────────────
-# 3. BERBERLER (Salon ID'sine bağlandılar)
+# 3. BERBERLER (Yeni Sosyal Medya Alanlarıyla)
 # ─────────────────────────────────────────────
+# NOT: whatsapp_no formatı başında '+' olmadan ülke koduyla olmalı (Örn: 90552...)
 berberler = [
-    models.Berber(ad="Ali", soyad="Uysal", uzmanlik="Usta", puan=4.9, salon_id=yeni_salon.id),
-    models.Berber(ad="Mehmet", soyad="Kaya", uzmanlik="Kalfa", puan=4.7, salon_id=yeni_salon.id),
-    models.Berber(ad="Eren", soyad="Altınsoy", uzmanlik="Kalfa", puan=4.2, salon_id=yeni_salon.id),
-    models.Berber(ad="Baran", soyad="Demir", uzmanlik="Çırak", puan=4.5, salon_id=yeni_salon.id)
+    models.Berber(
+        ad="Ali", 
+        soyad="Uysal", 
+        uzmanlik="Usta", 
+        puan=4.9, 
+        salon_id=yeni_salon.id,
+        whatsapp_no="905522509230", 
+        instagram_username="tevfikuner0"
+    ),
+    models.Berber(
+        ad="Mehmet", 
+        soyad="Kaya", 
+        uzmanlik="Kalfa", 
+        puan=4.7, 
+        salon_id=yeni_salon.id,
+        whatsapp_no="905522509230", 
+        instagram_username="tevfikuner0"
+    ),
+    models.Berber(
+        ad="Eren", 
+        soyad="Altınsoy", 
+        uzmanlik="Kalfa", 
+        puan=4.2, 
+        salon_id=yeni_salon.id,
+        whatsapp_no="905522509230", 
+        instagram_username="tevfikuner0"
+    ),
+    models.Berber(
+        ad="Baran", 
+        soyad="Demir", 
+        uzmanlik="Çırak", 
+        puan=4.5, 
+        salon_id=yeni_salon.id,
+        whatsapp_no="905522509230", 
+        instagram_username="tevfikuner0"
+    )
 ]
 db.add_all(berberler)
 db.commit()
-print(f"[OK] {len(berberler)} berber '{yeni_salon.ad}' salonuna eklendi.")
+print(f"[OK] Berberler sosyal medya bilgileriyle eklendi.")
 
 # ─────────────────────────────────────────────
-# 4. ESKİ DÜKKAN BİLGİSİ (Geriye dönük uyumluluk için)
+# 4. ESKİ DÜKKAN BİLGİSİ
 # ─────────────────────────────────────────────
 dukkan = models.Dukkan(
     ad="Premium Berber",

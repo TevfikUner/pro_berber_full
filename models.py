@@ -45,6 +45,9 @@ class Berber(Base):
     salon_id = Column(Integer, ForeignKey("salonlar.id"))
     salon = relationship("Salon", back_populates="berberler")
 
+    whatsapp_no = Column(String, nullable=True)
+    instagram_username = Column(String, nullable=True)
+
 class Musteri(Base):
     __tablename__ = "musteriler"
     id = Column(Integer, primary_key=True, index=True)
