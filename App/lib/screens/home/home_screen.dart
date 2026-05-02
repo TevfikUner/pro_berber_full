@@ -301,7 +301,7 @@ class _StatKart extends StatelessWidget {
     required this.label,
     required this.value,
     required this.icon,
-    this.valueColor = Colors.white, // İŞTE EKSİK OLAN PARÇA BU!
+    this.valueColor = Colors.white, // Rengi buraya ekledik!
   });
   
   @override
